@@ -23,6 +23,9 @@ from models.inputs import UserInput
 from models.run_result import RunResult
 from app import run_research_pipeline
 from config import regions_data
+from research.perplexity_client import (
+    PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
+)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -95,8 +98,50 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
         if run_id in active_runs:
             del active_runs[run_id]
 
+    except (PerplexityRateLimitError, PerplexityAuthError) as e:
+        # Handle API credit/auth errors with specific messaging
+        error_msg = (
+            f"{str(e)}\n\n"
+            f"Please check your API credit balance at:\n"
+            f"https://www.perplexity.ai/account/api/billing"
+        )
+        completed_runs[run_id] = {
+            "run_id": run_id,
+            "status": "failed",
+            "user_input": user_input.model_dump(),
+            "suburbs_count": 0,
+            "output_dir": None,
+            "error_message": error_msg,
+            "started_at": active_runs[run_id]["started_at"],
+            "completed_at": datetime.now().isoformat()
+        }
+
+        if run_id in active_runs:
+            del active_runs[run_id]
+
+    except PerplexityAPIError as e:
+        # Handle general API errors
+        error_msg = (
+            f"Perplexity API Error: {str(e)}\n\n"
+            f"Check your API status and credits at:\n"
+            f"https://www.perplexity.ai/account/api/billing"
+        )
+        completed_runs[run_id] = {
+            "run_id": run_id,
+            "status": "failed",
+            "user_input": user_input.model_dump(),
+            "suburbs_count": 0,
+            "output_dir": None,
+            "error_message": error_msg,
+            "started_at": active_runs[run_id]["started_at"],
+            "completed_at": datetime.now().isoformat()
+        }
+
+        if run_id in active_runs:
+            del active_runs[run_id]
+
     except Exception as e:
-        # Handle errors
+        # Handle other errors
         completed_runs[run_id] = {
             "run_id": run_id,
             "status": "failed",

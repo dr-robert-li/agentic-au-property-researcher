@@ -222,8 +222,19 @@ def main():
 
     if passed == total:
         print(f"\n{GREEN}✅ Setup validation successful!{RESET}")
+
+        # Add reminder about API credits
+        print(f"\n{YELLOW}⚠️  IMPORTANT REMINDERS:{RESET}")
+        print(f"  • Check your API credit balance before running large analyses:")
+        print(f"    {BLUE}https://www.perplexity.ai/account/api/billing{RESET}")
+        print(f"  • Research consumes significant API credits (deep-research preset)")
+        print(f"  • Start with small runs (2-3 suburbs) to test")
+        print(f"  • Each suburb takes 2-5 minutes and uses substantial API tokens")
+
         print("\nYou can now run the application:")
-        print(f"{BLUE}  python demo.py{RESET}")
+        print(f"{BLUE}  python demo.py{RESET}                    # Quick demo with 2 suburbs")
+        print(f"{BLUE}  python run_web.py{RESET}                 # Web interface (recommended)")
+        print(f"{BLUE}  python run_interactive.py{RESET}         # Interactive CLI")
         print(f"{BLUE}  python -m src.app --max-price 700000 --dwelling-type house{RESET}")
         return True
     else:

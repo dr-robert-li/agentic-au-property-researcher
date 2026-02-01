@@ -17,6 +17,9 @@ from research.suburb_discovery import discover_suburbs, get_discovery_summary
 from research.suburb_research import batch_research_suburbs
 from research.ranking import rank_suburbs, get_ranking_summary
 from reporting.html_renderer import generate_all_reports, copy_static_assets
+from research.perplexity_client import (
+    PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
+)
 
 
 def run_research_pipeline(user_input: UserInput) -> RunResult:
@@ -117,10 +120,35 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
         run_result.status = "cancelled"
         return run_result
 
+    except (PerplexityRateLimitError, PerplexityAuthError) as e:
+        # Handle API credit/auth errors with specific messaging
+        print(f"\n\n{'='*80}")
+        print(str(e))
+        print(f"{'='*80}\n")
+        run_result.status = "failed"
+        run_result.error_message = str(e)
+        return run_result
+
+    except PerplexityAPIError as e:
+        # Handle general API errors
+        print(f"\n\n{'='*80}")
+        print(f"❌ PERPLEXITY API ERROR")
+        print(f"{'='*80}")
+        print(str(e))
+        print(f"{'='*80}\n")
+        run_result.status = "failed"
+        run_result.error_message = str(e)
+        return run_result
+
     except Exception as e:
-        print(f"\n\n✗ Pipeline failed: {e}")
+        print(f"\n\n{'='*80}")
+        print(f"❌ PIPELINE FAILED")
+        print(f"{'='*80}")
+        print(f"Error: {e}")
         import traceback
+        print("\nFull traceback:")
         traceback.print_exc()
+        print(f"{'='*80}\n")
         run_result.status = "failed"
         run_result.error_message = str(e)
         return run_result

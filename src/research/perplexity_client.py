@@ -9,6 +9,45 @@ import os
 from config import settings
 
 
+class PerplexityAPIError(Exception):
+    """Base exception for Perplexity API errors."""
+    pass
+
+
+class PerplexityRateLimitError(PerplexityAPIError):
+    """Exception raised when API rate limit is exceeded."""
+    def __init__(self, message: str = None):
+        default_msg = (
+            "\n⚠️  API RATE LIMIT EXCEEDED OR INSUFFICIENT CREDITS\n\n"
+            "Your Perplexity API request was denied. This typically means:\n"
+            "  1. You've exceeded your API rate limit\n"
+            "  2. Your API credit balance is insufficient\n"
+            "  3. Your API key has expired or is invalid\n\n"
+            "ACTION REQUIRED:\n"
+            "  → Check your API credit balance at:\n"
+            "    https://www.perplexity.ai/account/api/billing\n\n"
+            "  → If your balance is low, add more credits\n"
+            "  → If rate limited, wait a few minutes and try again with fewer suburbs\n"
+            "  → Verify your API key in .env is correct and active\n"
+        )
+        super().__init__(message or default_msg)
+
+
+class PerplexityAuthError(PerplexityAPIError):
+    """Exception raised when API authentication fails."""
+    def __init__(self, message: str = None):
+        default_msg = (
+            "\n⚠️  API AUTHENTICATION FAILED\n\n"
+            "Your Perplexity API key appears to be invalid or inactive.\n\n"
+            "ACTION REQUIRED:\n"
+            "  → Check your API key in the .env file\n"
+            "  → Verify the key is active at:\n"
+            "    https://www.perplexity.ai/account/api/billing\n"
+            "  → Generate a new API key if needed\n"
+        )
+        super().__init__(message or default_msg)
+
+
 class PerplexityClient:
     """Wrapper for Perplexity Agentic Research API."""
 
@@ -107,14 +146,47 @@ class PerplexityClient:
 
             except Exception as e:
                 last_exception = e
+                error_str = str(e).lower()
+
+                # Check for rate limiting or credit issues (401, 429 errors)
+                if any(indicator in error_str for indicator in [
+                    '401', 'unauthorized', 'rate limit', 'quota',
+                    'insufficient credits', 'billing', 'payment required',
+                    '429', 'too many requests'
+                ]):
+                    raise PerplexityRateLimitError()
+
+                # Check for authentication issues
+                if any(indicator in error_str for indicator in [
+                    'invalid api key', 'authentication failed', 'invalid key',
+                    'api key', 'forbidden', '403'
+                ]):
+                    raise PerplexityAuthError()
+
+                # For other errors, retry with exponential backoff
                 if attempt < max_retries - 1:
-                    wait_time = settings.RETRY_DELAY * (attempt + 1)
-                    print(f"API call failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
+                    wait_time = settings.RETRY_DELAY * (2 ** attempt)  # Exponential backoff
+                    print(f"⚠️  API call failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
+                    print(f"   Error: {e}")
                     time.sleep(wait_time)
                 else:
-                    print(f"API call failed after {max_retries} attempts: {e}")
+                    print(f"❌ API call failed after {max_retries} attempts")
 
-        raise Exception(f"Perplexity API call failed after {max_retries} attempts: {last_exception}")
+        # If we exhausted all retries, provide detailed error message
+        error_msg = (
+            f"\n❌ Perplexity API call failed after {max_retries} attempts.\n\n"
+            f"Last error: {last_exception}\n\n"
+            f"Possible causes:\n"
+            f"  • Network connectivity issues\n"
+            f"  • API service temporarily unavailable\n"
+            f"  • Request timeout (current timeout: {timeout}s)\n\n"
+            f"Suggestions:\n"
+            f"  • Check your internet connection\n"
+            f"  • Try again in a few minutes\n"
+            f"  • Check Perplexity API status\n"
+            f"  • Verify your API credits at: https://www.perplexity.ai/account/api/billing\n"
+        )
+        raise PerplexityAPIError(error_msg)
 
     def parse_json_response(self, response_text: str) -> dict:
         """

@@ -16,7 +16,9 @@ from models.suburb_metrics import (
     TimePoint
 )
 from research.suburb_discovery import SuburbCandidate
-from research.perplexity_client import get_client
+from research.perplexity_client import (
+    get_client, PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
+)
 
 
 def research_suburb(
@@ -157,8 +159,13 @@ Begin your response with the opening brace {{
         print(f"✓ Research complete for {candidate.name}")
         return metrics
 
+    except (PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError) as e:
+        # Re-raise API errors immediately - don't waste credits on fallback attempts
+        print(f"❌ API error for {candidate.name}")
+        raise
     except Exception as e:
-        print(f"Error researching {candidate.name}: {e}")
+        print(f"⚠️  Error researching {candidate.name}: {e}")
+        print(f"   Using fallback metrics for this suburb...")
         # Return fallback metrics rather than failing
         return _create_fallback_metrics(candidate)
 
@@ -290,9 +297,18 @@ def batch_research_suburbs(
         try:
             metrics = research_suburb(candidate, dwelling_type, max_price)
             results.append(metrics)
+        except (PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError) as e:
+            # Stop immediately on API errors - don't waste credits
+            print(f"\n{'='*60}")
+            print(f"❌ STOPPING: API error encountered")
+            print(f"   Successfully researched: {len(results)}/{total} suburbs")
+            print(f"   Failed at: {candidate.name}")
+            print(f"{'='*60}")
+            raise
         except Exception as e:
-            print(f"! Failed to research {candidate.name}: {e}")
-            # Add fallback metrics
+            print(f"⚠️  Failed to research {candidate.name}: {e}")
+            print(f"   Using fallback metrics and continuing...")
+            # Add fallback metrics for non-API errors
             results.append(_create_fallback_metrics(candidate))
 
     print(f"\n✓ Batch research complete: {len(results)}/{total} suburbs")
