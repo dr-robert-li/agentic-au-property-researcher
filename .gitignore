@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# Environment variables and secrets
+.env
+*.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code files
+.claude/
+CLAUDE.md
+claude*.md
+
+# Output files
+runs/
+*.html
+*.png
+*.jpg
+*.svg
+output/
+reports/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+test_*.py
+*_test.py
+test*/
+
+# Progress tracking
+TODO.md
+PROGRESS.md
+PROJECT_SUMMARY.md
+TASKS.md
+ROADMAP.md
+NOTES.md
+STATUS.md
+
+# PyInstaller
+*.spec
