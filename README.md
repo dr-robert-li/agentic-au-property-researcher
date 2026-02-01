@@ -3,11 +3,6 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Status](https://img.shields.io/badge/status-production%20ready-success.svg)]()
-[![AI](https://img.shields.io/badge/AI-Perplexity%20%2B%20Claude%20Sonnet%204.5-purple.svg)](https://www.perplexity.ai/)
-[![Framework](https://img.shields.io/badge/framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
-[![Made for](https://img.shields.io/badge/made%20for-Australia%20🇦🇺-orange.svg)]()
-[![Contributions](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 **Author:** Dr. Robert Li
 **Version:** 1.0.0
