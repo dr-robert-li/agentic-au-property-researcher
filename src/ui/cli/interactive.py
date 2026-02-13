@@ -295,6 +295,28 @@ def interactive_mode():
                 import webbrowser
                 webbrowser.open(f"file://{result.output_dir.absolute()}/index.html")
                 console.print("[green]✓[/green] Opened in browser")
+
+            # Offer PDF export
+            export_pdf = prompt("Generate PDF report? (yes/no): ", default="no").strip().lower()
+            if export_pdf in ['yes', 'y']:
+                try:
+                    from reporting.exports import generate_pdf_export
+                    with console.status("[bold cyan]Generating PDF...[/bold cyan]"):
+                        pdf_path = generate_pdf_export(result, result.output_dir)
+                    console.print(f"[green]✓[/green] PDF saved: {pdf_path}")
+                except Exception as e:
+                    console.print(f"[red]PDF export failed:[/red] {e}")
+
+            # Offer Excel export
+            export_xlsx = prompt("Generate Excel report? (yes/no): ", default="no").strip().lower()
+            if export_xlsx in ['yes', 'y']:
+                try:
+                    from reporting.exports import generate_excel_export
+                    with console.status("[bold cyan]Generating Excel...[/bold cyan]"):
+                        xlsx_path = generate_excel_export(result, result.output_dir)
+                    console.print(f"[green]✓[/green] Excel saved: {xlsx_path}")
+                except Exception as e:
+                    console.print(f"[red]Excel export failed:[/red] {e}")
         else:
             console.print(
                 Panel.fit(

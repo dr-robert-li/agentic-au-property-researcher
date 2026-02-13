@@ -167,6 +167,12 @@ def generate_all_reports(run_result: RunResult, output_dir: Path) -> dict:
     print(f"  - Charts: {len(list((output_dir / 'charts').glob('*.png')))} images")
     print(f"\nOpen in browser: file://{index_path.absolute()}")
 
+    # Save run metadata for later export reconstruction
+    import json
+    metadata_path = output_dir / "run_metadata.json"
+    metadata_path.write_text(run_result.model_dump_json(indent=2), encoding='utf-8')
+    print(f"  - Metadata: {metadata_path.name}")
+
     return generated_files
 
 

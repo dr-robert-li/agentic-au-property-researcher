@@ -41,7 +41,7 @@ API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
 app = FastAPI(
     title="Australian Property Research",
     description="AI-powered property investment research for Australian real estate",
-    version="1.1.0"
+    version="1.2.0"
 )
 
 # Templates directory
@@ -280,6 +280,61 @@ async def view_report(run_id: str, path: str = "index.html"):
 
     # Serve the file
     return FileResponse(report_path)
+
+
+@app.get("/export/{run_id}/{format}")
+async def export_report(run_id: str, format: str):
+    """Generate and serve a PDF or Excel export."""
+    if format not in ('pdf', 'xlsx'):
+        return HTMLResponse("Invalid format. Use 'pdf' or 'xlsx'.", status_code=400)
+
+    run_dir = output_base / run_id
+    if not run_dir.exists() or not (run_dir / "index.html").exists():
+        return HTMLResponse(f"Run {run_id} not found.", status_code=404)
+
+    # Determine expected output filename
+    if format == 'pdf':
+        export_path = run_dir / f"report_{run_id}.pdf"
+    else:
+        export_path = run_dir / f"report_{run_id}.xlsx"
+
+    # Generate if not already cached
+    if not export_path.exists():
+        from reporting.exports import (
+            generate_pdf_export, generate_excel_export,
+            reconstruct_run_result, ExportError
+        )
+
+        # Try to reconstruct RunResult from metadata file
+        run_result = reconstruct_run_result(run_id, run_dir)
+
+        if run_result is None:
+            return HTMLResponse(
+                "Cannot export: run metadata not found. "
+                "This run was created before export support was added.",
+                status_code=404
+            )
+
+        try:
+            if format == 'pdf':
+                export_path = generate_pdf_export(run_result, run_dir)
+            else:
+                export_path = generate_excel_export(run_result, run_dir)
+        except ExportError as e:
+            return HTMLResponse(f"Export failed: {str(e)}", status_code=500)
+        except Exception as e:
+            return HTMLResponse(f"Export error: {str(e)}", status_code=500)
+
+    # Serve the file
+    media_type = (
+        "application/pdf" if format == "pdf"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return FileResponse(
+        path=str(export_path),
+        media_type=media_type,
+        filename=export_path.name
+    )
 
 
 @app.get("/health")

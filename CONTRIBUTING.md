@@ -107,7 +107,6 @@ Enhancement suggestions are tracked as GitHub Issues. When creating an enhanceme
 Areas where contributions are especially welcome:
 
 1. **New Features**:
-   - PDF/Excel export functionality
    - Data caching layer
    - Additional chart types
    - New region definitions
@@ -334,7 +333,10 @@ agentic-re-researcher/
 │   │   └── ranking.py
 │   ├── reporting/           # Report generation
 │   │   ├── charts.py        # Chart generation
-│   │   └── html_renderer.py # HTML rendering
+│   │   ├── html_renderer.py # HTML rendering
+│   │   ├── exports.py       # Export orchestration (PDF/Excel)
+│   │   ├── pdf_exporter.py  # PDF report generation (fpdf2)
+│   │   └── excel_exporter.py # Excel workbook generation (openpyxl)
 │   ├── ui/                  # User interfaces
 │   │   ├── web/
 │   │   │   ├── server.py    # FastAPI web server

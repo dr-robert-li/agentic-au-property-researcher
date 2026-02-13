@@ -1,12 +1,12 @@
 # Agentic Australian Property Researcher 🏘️
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 **Author:** Dr. Robert Li
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 ---
 
@@ -56,6 +56,11 @@ AI-powered property investment researcher that generates comprehensive suburb-le
   - Comparison charts and visualizations (matplotlib/seaborn)
   - Overview dashboard with rankings
   - Detailed suburb-level reports
+- **Export Options**:
+  - PDF export with styled layout, rankings table, per-suburb sections, and embedded charts
+  - Excel export with 7 structured sheets (overview, market metrics, growth projections, property config, demographics, infrastructure, price history)
+  - On-demand export from web UI, interactive CLI, or CLI flags
+  - Cached exports for instant re-download
 - **Triple Interface**: Three ways to use the application
   - Basic command-line interface (argparse)
   - Interactive CLI with autocomplete and validation (prompt_toolkit + rich)
@@ -177,6 +182,8 @@ python -m src.app \
 - `--num-suburbs`: Number of top suburbs to include in report (default: 5)
 - `--provider`: AI research provider (`perplexity` or `anthropic`; only available providers shown)
 - `--run-id`: Custom run ID (default: auto-generated timestamp)
+- `--export-pdf`: Automatically generate PDF report after completion
+- `--export-xlsx`: Automatically generate Excel report after completion
 
 #### Examples
 
@@ -213,6 +220,14 @@ python -m src.app \
   --dwelling-type house \
   --regions "Queensland" \
   --num-suburbs 15
+```
+
+**With PDF and Excel export**:
+```bash
+python -m src.app \
+  --max-price 700000 \
+  --dwelling-type house \
+  --export-pdf --export-xlsx
 ```
 
 **All of Australia** (warning: slow and expensive):
@@ -275,9 +290,12 @@ runs/
     │   ├── price_history_suburb-1.png
     │   ├── growth_projection_suburb-1.png
     │   └── ...
-    └── static/                 # CSS and assets
-        └── css/
-            └── styles.css
+    ├── static/                 # CSS and assets
+    │   └── css/
+    │       └── styles.css
+    ├── run_metadata.json       # Run metadata for export reconstruction
+    ├── report_*.pdf            # PDF export (generated on demand)
+    └── report_*.xlsx           # Excel export (generated on demand)
 ```
 
 ### Viewing Reports
@@ -377,6 +395,9 @@ src/
 5. **Ranking Engine** (`research/ranking.py`): Scores and ranks suburbs
 6. **Chart Generator** (`reporting/charts.py`): Creates visualizations
 7. **HTML Renderer** (`reporting/html_renderer.py`): Generates reports
+8. **PDF Exporter** (`reporting/pdf_exporter.py`): Generates styled PDF reports via fpdf2
+9. **Excel Exporter** (`reporting/excel_exporter.py`): Generates multi-sheet Excel workbooks via openpyxl
+10. **Export Orchestrator** (`reporting/exports.py`): Coordinates export generation and metadata reconstruction
 
 ## Data Models
 
@@ -460,7 +481,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 - [x] FastAPI web interface
 - [x] Interactive CLI with prompt_toolkit
 - [x] Dual AI provider support (Perplexity + Anthropic Claude)
-- [ ] Export to PDF/Excel
+- [x] Export to PDF/Excel
 - [ ] Historical data caching
 - [ ] Comparison mode for multiple runs
 - [ ] Email report delivery
@@ -470,7 +491,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 - **Perplexity AI**: Deep research API with live web search capabilities
 - **Anthropic**: Claude Sonnet 4.5 for advanced reasoning (now a direct provider option)
-- **Libraries**: Pydantic, Jinja2, Matplotlib, Seaborn, FastAPI, prompt_toolkit, rich
+- **Libraries**: Pydantic, Jinja2, Matplotlib, Seaborn, FastAPI, prompt_toolkit, rich, fpdf2, openpyxl
 
 ## Disclaimer
 

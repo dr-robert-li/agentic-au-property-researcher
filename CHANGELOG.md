@@ -8,11 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- PDF/Excel export functionality
 - Historical data caching layer
 - Multi-run comparison mode
 - Email report delivery
 - RESTful API endpoints
+
+## [1.2.0] - 2026-02-13
+
+### Added
+- **PDF Export**: Generate styled PDF reports from any completed research run
+  - Title page with run configuration
+  - Overview rankings table with all suburbs
+  - Embedded overview and per-suburb chart PNGs
+  - Per-suburb sections with growth projections, market metrics, infrastructure, and risk analysis
+  - Custom header/footer with run ID and page numbers
+  - Implemented with `fpdf2` (pure Python, no system dependencies)
+- **Excel Export**: Generate multi-sheet `.xlsx` workbooks with structured data
+  - 7 sheets: Overview, Market Metrics, Growth Projections, Property Config, Demographics, Infrastructure, Price History
+  - Styled headers, currency/percentage formatting, auto-column-widths
+  - Confidence intervals for 1/5/10-year projections
+  - Wide-format price history with year columns
+  - Implemented with `openpyxl`
+- **Run Metadata Persistence**: `run_metadata.json` saved alongside HTML reports, enabling exports on past runs
+- **Web UI Export**: PDF and Excel download buttons on run status page and runs list
+  - `GET /export/{run_id}/{format}` endpoint with caching (generates once, serves cached)
+- **Interactive CLI Export**: Post-completion prompts to generate PDF and Excel reports with spinner feedback
+- **Basic CLI Export Flags**: `--export-pdf` and `--export-xlsx` flags for automated export generation
+- **Export Orchestration Layer** (`src/reporting/exports.py`):
+  - `generate_pdf_export()` and `generate_excel_export()` public API
+  - `reconstruct_run_result()` for rebuilding RunResult from metadata files
+  - `ExportError` exception class for export-specific error handling
+
+### Dependencies
+- Added `fpdf2>=2.7.0` (PDF generation)
+- Added `openpyxl>=3.1.0` (Excel generation)
 
 ## [1.1.0] - 2026-02-13
 
@@ -149,6 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.2.0** (2026-02-13): PDF and Excel export functionality
 - **v1.1.0** (2026-02-13): Dual AI provider support (Perplexity + Anthropic Claude)
 - **v1.0.0** (2026-02-10): Web interface + interactive CLI
 - **v0.1.0** (2026-02-01): Initial release with core functionality

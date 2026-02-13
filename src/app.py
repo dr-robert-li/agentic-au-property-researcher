@@ -231,6 +231,18 @@ Examples:
         help="Custom run ID (default: auto-generated timestamp)"
     )
 
+    parser.add_argument(
+        "--export-pdf",
+        action="store_true",
+        help="Automatically generate PDF report after completion"
+    )
+
+    parser.add_argument(
+        "--export-xlsx",
+        action="store_true",
+        help="Automatically generate Excel report after completion"
+    )
+
     args = parser.parse_args()
 
     # Validate num_suburbs
@@ -255,6 +267,24 @@ Examples:
 
     # Run pipeline
     run_result = run_research_pipeline(user_input)
+
+    # Generate exports if requested
+    if run_result.status == "completed":
+        if args.export_pdf:
+            try:
+                from reporting.exports import generate_pdf_export
+                pdf_path = generate_pdf_export(run_result, run_result.output_dir)
+                print(f"📄 PDF exported: {pdf_path}")
+            except Exception as e:
+                print(f"❌ PDF export failed: {e}")
+
+        if args.export_xlsx:
+            try:
+                from reporting.exports import generate_excel_export
+                xlsx_path = generate_excel_export(run_result, run_result.output_dir)
+                print(f"📊 Excel exported: {xlsx_path}")
+            except Exception as e:
+                print(f"❌ Excel export failed: {e}")
 
     # Exit with appropriate code
     if run_result.status == "completed":
