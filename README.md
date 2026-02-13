@@ -1,12 +1,12 @@
 # Agentic Australian Property Researcher 🏘️
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 **Author:** Dr. Robert Li
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 
 ---
 
@@ -75,6 +75,14 @@ AI-powered property investment researcher that generates comprehensive suburb-le
   - Run configuration comparison table
   - Available from web UI (runs list + dedicated comparison page) and CLI (`--compare` flag)
   - Generates standalone comparison HTML reports
+- **Pipeline Resilience**:
+  - Transient API errors (timeouts, server errors) skip the suburb and continue with remaining suburbs using fallback metrics
+  - Only account-level errors (auth failures, rate limits) stop the batch
+  - Increased discovery multiplier (5x) and research multiplier (3x) to ensure enough candidates survive filtering
+- **Progress Visibility**:
+  - Web UI displays real-time step-by-step progress during research runs
+  - Progress steps include suburb discovery, per-suburb research status, ranking, and report generation
+  - Steps auto-update via polling with timestamps
 - **Triple Interface**: Three ways to use the application
   - Basic command-line interface (argparse)
   - Interactive CLI with autocomplete and validation (prompt_toolkit + rich)
@@ -453,11 +461,13 @@ See `src/models/suburb_metrics.py` for complete schema.
 # Activate virtual environment
 source venv/bin/activate
 
-# Run all tests
-python -m pytest tests/ -v
+# Run all test suites (88 tests)
+python test_cache.py && python test_comparison.py && python test_pipeline.py
 
-# Run specific test
-python tests/test_perplexity.py
+# Run specific test suite
+python test_pipeline.py      # Pipeline resilience & progress (22 tests)
+python test_cache.py         # Research cache (41 tests)
+python test_comparison.py    # Run comparison (25 tests)
 ```
 
 ### Code Quality
@@ -518,6 +528,8 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 - [x] Export to PDF/Excel
 - [x] Historical data caching
 - [x] Comparison mode for multiple runs
+- [x] Pipeline resilience (graceful error handling)
+- [x] Real-time progress visibility in web UI
 
 ## Acknowledgments
 

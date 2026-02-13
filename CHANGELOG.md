@@ -10,6 +10,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - No additional features planned at this time
 
+## [1.4.0] - 2026-02-13
+
+### Added
+- **Pipeline Resilience**: Batch research now survives transient API errors instead of stopping the entire run
+  - Split `API_FATAL_ERRORS` into `API_ACCOUNT_ERRORS` (auth/rate-limit — stops batch) and `API_TRANSIENT_ERRORS` (general API errors — skips suburb, uses fallback metrics, continues)
+  - `_create_fallback_metrics()` generates placeholder SuburbMetrics for suburbs that fail research, preserving growth signals from discovery
+  - Generic exceptions (JSON parse errors, etc.) also use fallback and continue
+  - Increased discovery multiplier from 3x to 5x and research multiplier from 2x to 3x to ensure enough candidates survive filtering
+  - Price filter logging: shows when and how many candidates are removed by price filtering
+- **Progress Visibility**: Real-time step-by-step progress in web UI during research runs
+  - `progress_callback: Optional[Callable[[str], None]]` parameter threaded through `run_research_pipeline()` and `batch_research_suburbs()`
+  - `_progress()` helper in pipeline that both prints to stdout and calls the callback
+  - Web server creates callback that appends `{"message", "timestamp"}` dicts to `active_runs[run_id]["steps"]`
+  - Status page renders progress steps with checkmarks, messages, and timestamps
+  - Steps auto-scroll to latest entry on each 5-second poll cycle
+  - Progress messages at all key stages: discovery, per-suburb research, ranking, report generation
+- **Unit Tests**: 22 new pipeline tests (`test_pipeline.py`)
+  - Error type splitting (3 tests)
+  - Batch resilience (7 tests: transient continue, account stop, generic continue, all transient, max_suburbs)
+  - Progress callback (4 tests: per-suburb calls, transient error reporting, account error reporting, no-callback compatibility)
+  - Fallback metrics (2 tests: correct creation, growth signal preservation)
+  - Structural tests (6 tests: pipeline helper, discovery logging, server steps init, server callback, multipliers)
+
+### Changed
+- `src/research/suburb_research.py`: Split error handling; `batch_research_suburbs` now accepts `progress_callback` parameter
+- `src/research/suburb_discovery.py`: Added price filter count logging in both cached and fresh API paths
+- `src/app.py`: Added `progress_callback` parameter to `run_research_pipeline()`, `_progress()` helper, increased multipliers
+- `src/ui/web/server.py`: Steps list initialization in active runs, progress callback creation in background task
+- `src/ui/web/templates/run_status.html`: Progress steps display section with auto-updating JavaScript
+
+### Dependencies
+- Added `python-multipart>=0.0.6` (required by FastAPI for form data handling)
+
 ## [1.3.0] - 2026-02-13
 
 ### Added
@@ -52,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Comparison Templates**:
   - `compare_select.html` — run selection with JavaScript validation
   - `compare_report.html` — self-contained comparison report with summary stats, config table, overlapping suburbs, unique suburbs
-- **Unit Tests**: 66 new tests
+- **Unit Tests**: 66 tests
   - `test_cache.py`: 41 tests covering key generation, price bucketing, put/get, TTL, invalidation, clear, stats, edge cases, integration
   - `test_comparison.py`: 25 tests covering models, run summary computation, overlap detection, filesystem reconstruction, rendering
 
@@ -230,6 +263,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.4.0** (2026-02-13): Pipeline resilience + real-time progress visibility
 - **v1.3.0** (2026-02-13): Historical data caching + run comparison mode
 - **v1.2.0** (2026-02-13): PDF and Excel export functionality
 - **v1.1.0** (2026-02-13): Dual AI provider support (Perplexity + Anthropic Claude)

@@ -108,10 +108,13 @@ Begin your response with the opening square bracket [
         logger.info("Cache HIT for discovery")
         print("   (Using cached discovery results)")
         candidates = [SuburbCandidate(item) for item in cached if isinstance(item, dict)]
+        pre_filter_count = len(candidates)
         candidates = [
             c for c in candidates
             if c.median_price > 0 and c.median_price <= user_input.max_median_price
         ]
+        if pre_filter_count != len(candidates):
+            print(f"   Price filter: {pre_filter_count} -> {len(candidates)} candidates ({pre_filter_count - len(candidates)} removed)")
         if max_results:
             candidates = candidates[:max_results]
         print(f"✓ Found {len(candidates)} qualifying suburbs (cached)")
@@ -149,10 +152,13 @@ Begin your response with the opening square bracket [
         candidates = [SuburbCandidate(item) for item in raw_list]
 
         # Filter by price (in case the API included some above threshold)
+        pre_filter_count = len(candidates)
         candidates = [
             c for c in candidates
             if c.median_price > 0 and c.median_price <= user_input.max_median_price
         ]
+        if pre_filter_count != len(candidates):
+            print(f"   Price filter: {pre_filter_count} -> {len(candidates)} candidates ({pre_filter_count - len(candidates)} removed)")
 
         # Limit results if requested
         if max_results:

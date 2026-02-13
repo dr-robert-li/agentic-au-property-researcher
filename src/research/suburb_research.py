@@ -3,7 +3,7 @@ Per-suburb detailed research functionality using deep research.
 """
 import json
 import logging
-from typing import Optional
+from typing import Optional, Callable
 
 from research.cache import get_cache
 
@@ -28,11 +28,13 @@ from research.anthropic_client import (
     AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError
 )
 
-# Combined API error types for catching across providers
-API_FATAL_ERRORS = (
-    PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError,
-    AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError,
+# Account-level errors (auth, credits, rate limits) — stop the batch immediately
+API_ACCOUNT_ERRORS = (
+    PerplexityRateLimitError, PerplexityAuthError,
+    AnthropicRateLimitError, AnthropicAuthError,
 )
+# Per-request API errors (timeouts, server errors) — skip suburb, continue batch
+API_TRANSIENT_ERRORS = (PerplexityAPIError, AnthropicAPIError)
 
 
 def research_suburb(
@@ -196,9 +198,9 @@ Begin your response with the opening brace {{
         print(f"✓ Research complete for {candidate.name}")
         return metrics
 
-    except API_FATAL_ERRORS as e:
-        # Re-raise API errors immediately - don't waste credits on fallback attempts
-        print(f"❌ API error for {candidate.name}")
+    except API_ACCOUNT_ERRORS as e:
+        # Re-raise account-level errors immediately - no point continuing
+        print(f"❌ Account-level API error for {candidate.name}")
         raise
     except Exception as e:
         print(f"⚠️  Error researching {candidate.name}: {e}")
@@ -307,7 +309,8 @@ def batch_research_suburbs(
     dwelling_type: str,
     max_price: float,
     max_suburbs: Optional[int] = None,
-    provider: str = "perplexity"
+    provider: str = "perplexity",
+    progress_callback: Optional[Callable[[str], None]] = None
 ) -> list[SuburbMetrics]:
     """
     Research multiple suburbs in batch.
@@ -318,6 +321,7 @@ def batch_research_suburbs(
         max_price: Maximum median price
         max_suburbs: Maximum number to research (None = all)
         provider: Research provider ("perplexity" or "anthropic")
+        progress_callback: Optional callback for progress updates
 
     Returns:
         List of SuburbMetrics objects
@@ -332,23 +336,38 @@ def batch_research_suburbs(
     print("=" * 60)
 
     for i, candidate in enumerate(candidates, 1):
+        msg = f"Researching suburb {i}/{total}: {candidate.name}, {candidate.state}..."
         print(f"\n[{i}/{total}] {candidate.name}, {candidate.state}")
+        if progress_callback:
+            progress_callback(msg)
         try:
             metrics = research_suburb(candidate, dwelling_type, max_price, provider)
             results.append(metrics)
-        except API_FATAL_ERRORS as e:
-            # Stop immediately on API errors - don't waste credits
+            if progress_callback:
+                progress_callback(f"Research complete for {candidate.name}")
+        except API_ACCOUNT_ERRORS as e:
+            # Stop immediately on account-level errors (auth, credits, rate limit)
             print(f"\n{'='*60}")
-            print(f"❌ STOPPING: API error encountered")
+            print(f"❌ STOPPING: Account-level API error encountered")
             print(f"   Successfully researched: {len(results)}/{total} suburbs")
             print(f"   Failed at: {candidate.name}")
             print(f"{'='*60}")
+            if progress_callback:
+                progress_callback(f"FATAL: API account error at {candidate.name}")
             raise
+        except API_TRANSIENT_ERRORS as e:
+            # Continue on per-request API errors (timeouts, server errors)
+            print(f"⚠️  API error for {candidate.name}: {e}")
+            print(f"   Skipping and continuing with remaining suburbs...")
+            results.append(_create_fallback_metrics(candidate))
+            if progress_callback:
+                progress_callback(f"API error for {candidate.name}, using fallback data")
         except Exception as e:
             print(f"⚠️  Failed to research {candidate.name}: {e}")
             print(f"   Using fallback metrics and continuing...")
-            # Add fallback metrics for non-API errors
             results.append(_create_fallback_metrics(candidate))
+            if progress_callback:
+                progress_callback(f"Error researching {candidate.name}, using fallback data")
 
     print(f"\n✓ Batch research complete: {len(results)}/{total} suburbs")
     return results

@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 from datetime import datetime
+from typing import Optional, Callable
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -32,16 +33,26 @@ API_CREDIT_AUTH_ERRORS = (
 API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
 
 
-def run_research_pipeline(user_input: UserInput) -> RunResult:
+def run_research_pipeline(
+    user_input: UserInput,
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> RunResult:
     """
     Execute the complete research pipeline.
 
     Args:
         user_input: User input parameters
+        progress_callback: Optional callback for progress updates (used by web UI)
 
     Returns:
         Complete RunResult with all reports
     """
+    def _progress(message: str):
+        """Report progress to both stdout and callback."""
+        print(message)
+        if progress_callback:
+            progress_callback(message)
+
     print("\n" + "="*80)
     print("🏘️  AUSTRALIAN PROPERTY RESEARCH PIPELINE")
     print("="*80)
@@ -64,36 +75,44 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
         # Step 1: Discover suburbs
         print("\n📍 STEP 1: SUBURB DISCOVERY")
         print("-" * 80)
-        candidates = discover_suburbs(user_input, max_results=user_input.num_suburbs * 3)
+        _progress("Discovering suburbs matching criteria...")
+        candidates = discover_suburbs(user_input, max_results=user_input.num_suburbs * 5)
 
         if not candidates:
-            print("✗ No suburbs found matching criteria")
+            _progress("No suburbs found matching criteria")
             run_result.status = "failed"
             run_result.error_message = "No qualifying suburbs found"
             return run_result
 
+        _progress(f"Found {len(candidates)} qualifying suburbs")
         print("\n" + get_discovery_summary(candidates))
 
         # Step 2: Detailed research
         print("\n🔬 STEP 2: DETAILED RESEARCH")
         print("-" * 80)
+        research_count = min(len(candidates), user_input.num_suburbs * 3)
+        _progress(f"Starting detailed research on {research_count} suburbs...")
         metrics_list = batch_research_suburbs(
             candidates,
             user_input.dwelling_type,
             user_input.max_median_price,
-            max_suburbs=min(len(candidates), user_input.num_suburbs * 2),  # Research 2x for ranking
-            provider=user_input.provider
+            max_suburbs=research_count,
+            provider=user_input.provider,
+            progress_callback=progress_callback
         )
 
         if not metrics_list:
-            print("✗ Research failed for all suburbs")
+            _progress("Research failed for all suburbs")
             run_result.status = "failed"
             run_result.error_message = "Research failed"
             return run_result
 
+        _progress(f"Research complete: {len(metrics_list)} suburbs analyzed")
+
         # Step 3: Ranking
         print("\n📊 STEP 3: RANKING & ANALYSIS")
         print("-" * 80)
+        _progress(f"Ranking {len(metrics_list)} suburbs by composite score...")
         reports = rank_suburbs(
             metrics_list,
             ranking_method="composite_score",
@@ -101,11 +120,15 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
         )
 
         run_result.suburbs = reports
+        _progress(f"Selected top {len(reports)} suburbs for reports")
+        if len(reports) < user_input.num_suburbs:
+            _progress(f"Note: Only {len(reports)} suburbs available (requested {user_input.num_suburbs})")
         print("\n" + get_ranking_summary(reports))
 
         # Step 4: Report generation
         print("\n📝 STEP 4: REPORT GENERATION")
         print("-" * 80)
+        _progress(f"Generating reports for {len(reports)} suburbs...")
         output_dir = settings.OUTPUT_DIR / user_input.run_id
         run_result.output_dir = output_dir
 
@@ -117,6 +140,7 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
 
         # Update status
         run_result.status = "completed"
+        _progress("Reports generated successfully")
 
         print("\n" + "="*80)
         print("✅ RESEARCH PIPELINE COMPLETE!")

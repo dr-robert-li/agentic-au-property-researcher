@@ -41,7 +41,7 @@ API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
 app = FastAPI(
     title="Australian Property Research",
     description="AI-powered property investment research for Australian real estate",
-    version="1.3.0"
+    version="1.4.0"
 )
 
 # Templates directory
@@ -89,8 +89,16 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
         # Update status
         active_runs[run_id]["status"] = "running"
 
+        def progress_callback(message: str):
+            """Append progress step to active run."""
+            if run_id in active_runs:
+                active_runs[run_id].setdefault("steps", []).append({
+                    "message": message,
+                    "timestamp": datetime.now().isoformat()
+                })
+
         # Run pipeline
-        result = run_research_pipeline(user_input)
+        result = run_research_pipeline(user_input, progress_callback=progress_callback)
 
         # Update completed runs
         completed_runs[run_id] = {
@@ -207,7 +215,8 @@ async def start_run(
         "run_id": run_id,
         "status": "starting",
         "user_input": user_input.model_dump(),
-        "started_at": datetime.now().isoformat()
+        "started_at": datetime.now().isoformat(),
+        "steps": []
     }
 
     # Start background task
