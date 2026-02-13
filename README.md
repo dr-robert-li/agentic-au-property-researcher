@@ -15,8 +15,8 @@ AI-powered property investment researcher that generates comprehensive suburb-le
 ## ⚠️ Important Warnings
 
 ### API Usage and Costs
-- **This application consumes significant API credits**: Each suburb research uses deep-research API calls (Perplexity or Anthropic), which are resource-intensive
-- **Token consumption**: A typical run analyzing 5-10 suburbs can consume tens of thousands of API tokens
+- **This application consumes significant API credits**: Each suburb research uses deep-research API calls (Perplexity or Anthropic), which are resource-intensive. A rule of thumb is USD1.00 consumption per suburb analyzed.
+- **Token consumption**: A typical run analyzing 5-10 suburbs can consume hundreds of thousands of tokens
 - **Processing time**: Research takes 2-5 minutes per suburb; a 10-suburb analysis can take 20-50 minutes
 - **Rate limiting**: Both Perplexity and Anthropic APIs have rate limits; large runs may encounter delays or failures
 
