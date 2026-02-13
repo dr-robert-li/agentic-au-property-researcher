@@ -898,18 +898,123 @@ def test_security_unicode_handling():
         assert xlsx_path.exists()
         record_pass("Excel handles unicode characters")
 
-        # PDF may have limited unicode support with Helvetica, but shouldn't crash
         pdf_path = output_dir / "unicode.pdf"
-        try:
-            generate_pdf(run_result, output_dir, pdf_path)
-            assert pdf_path.exists()
-            record_pass("PDF handles unicode characters (or degrades gracefully)")
-        except Exception as e:
-            # fpdf2 with built-in fonts may not support all unicode
-            if "character" in str(e).lower() or "encode" in str(e).lower():
-                record_pass("PDF gracefully reports unicode limitation")
-            else:
-                raise
+        generate_pdf(run_result, output_dir, pdf_path)
+        assert pdf_path.exists()
+        record_pass("PDF handles unicode characters via sanitization")
+
+
+# ─── PDF Unicode Sanitization Tests ─────────────────────────────────────────
+
+def test_pdf_sanitize_function():
+    """Test _sanitize() replaces problematic Unicode characters."""
+    print("\n── PDF Sanitize Function ──")
+    from reporting.pdf_exporter import _sanitize
+
+    # En-dash and em-dash
+    assert _sanitize("stages 1\u20134") == "stages 1-4"
+    assert _sanitize("2025\u2014a big year") == "2025-a big year"
+    record_pass("_sanitize replaces en-dash and em-dash")
+
+    # Smart quotes
+    assert _sanitize("Leichhardt\u2019s growth") == "Leichhardt's growth"
+    assert _sanitize("\u2018quoted\u2019") == "'quoted'"
+    assert _sanitize("\u201cdouble\u201d") == '"double"'
+    record_pass("_sanitize replaces smart quotes")
+
+    # Ellipsis, bullet, non-breaking space
+    assert _sanitize("more\u2026") == "more..."
+    assert _sanitize("\u2022 item") == "- item"
+    assert _sanitize("no\u00a0break") == "no break"
+    record_pass("_sanitize replaces ellipsis, bullet, nbsp")
+
+    # ASCII passthrough
+    plain = "Normal ASCII text - with 'quotes' and \"doubles\""
+    assert _sanitize(plain) == plain
+    record_pass("_sanitize passes through plain ASCII unchanged")
+
+    # Mixed Unicode
+    mixed = "Budget 2025\u201326: Leichhardt\u2019s Prep\u2013Year 6 \u2022 growth"
+    expected = "Budget 2025-26: Leichhardt's Prep-Year 6 - growth"
+    assert _sanitize(mixed) == expected
+    record_pass("_sanitize handles mixed Unicode in one string")
+
+
+def test_pdf_cell_override_sanitizes():
+    """Test PropertyReportPDF.cell() and multi_cell() auto-sanitize text."""
+    print("\n── PDF Cell Override ──")
+    from reporting.pdf_exporter import PropertyReportPDF
+
+    pdf = PropertyReportPDF(run_id="test")
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=10)
+
+    # cell() with positional text containing en-dash — should not raise
+    pdf.cell(w=180, h=10, text="stages 1\u20134")
+    record_pass("cell() sanitizes positional text arg")
+
+    # cell() with keyword text
+    pdf.cell(w=180, h=10, text="Leichhardt\u2019s growth")
+    record_pass("cell() sanitizes keyword text arg")
+
+    # multi_cell() with en-dash
+    pdf.multi_cell(w=180, h=10, text="Budget 2025\u201326")
+    record_pass("multi_cell() sanitizes positional text arg")
+
+    # multi_cell() with keyword text containing smart quotes
+    pdf.multi_cell(w=180, h=10, text="\u201cQuoted\u201d analysis")
+    record_pass("multi_cell() sanitizes keyword text arg")
+
+    # Verify PDF can be output (no crash)
+    output = pdf.output()
+    assert len(output) > 0
+    record_pass("PDF with sanitized Unicode cells outputs successfully")
+
+
+def test_pdf_realworld_unicode_data():
+    """Test PDF generation with real-world Unicode patterns from actual API data."""
+    print("\n── PDF Real-World Unicode ──")
+    from reporting.pdf_exporter import generate_pdf
+
+    suburb = make_full_suburb(name="Leichhardt", state="QLD", rank=1)
+
+    # Patterns found in actual run_metadata.json files
+    suburb.metrics.infrastructure.schools_summary = "Woodridge State School (Prep\u2013Year 6)"
+    suburb.metrics.infrastructure.future_transport = [
+        "Cross River Rail \u2013 stages 5\u20137",
+        "Brisbane Metro \u2013 northern extension"
+    ]
+    suburb.metrics.infrastructure.current_infrastructure = [
+        "Logan Motorway enhancement (stages 1\u20134)"
+    ]
+    suburb.metrics.infrastructure.planned_infrastructure = [
+        "Federal Budget 2025\u201326 allocations"
+    ]
+    suburb.metrics.growth_projections.risk_analysis = (
+        "Leichhardt\u2019s growth is tied to Brisbane\u2013Gold Coast corridor "
+        "infrastructure. The suburb\u2019s proximity to major projects "
+        "\u201csignificantly enhances\u201d long-term prospects."
+    )
+    suburb.metrics.growth_projections.key_drivers = [
+        "Brisbane 2032 Olympics \u2013 venue precinct development",
+        "Cross River Rail \u2013 improved connectivity",
+    ]
+    suburb.metrics.identification.region = "Brisbane\u2013Gold Coast Corridor"
+    suburb.metrics.infrastructure.major_events_relevance = (
+        "2032 Olympics \u2013 Gabba rebuild, athletes\u2019 village"
+    )
+
+    run_result = make_run_result(suburbs=[suburb])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_dir = Path(tmpdir)
+        (output_dir / "charts").mkdir()
+        pdf_path = output_dir / "realworld_unicode.pdf"
+
+        generate_pdf(run_result, output_dir, pdf_path)
+        assert pdf_path.exists()
+        assert pdf_path.stat().st_size > 1000
+        record_pass("PDF generates with real-world Unicode data patterns")
 
 
 # ─── Edge Case Tests ────────────────────────────────────────────────────────
@@ -1066,6 +1171,10 @@ def main():
         test_security_long_strings,
         test_security_negative_values,
         test_security_unicode_handling,
+        # PDF Unicode sanitization tests
+        test_pdf_sanitize_function,
+        test_pdf_cell_override_sanitizes,
+        test_pdf_realworld_unicode_data,
         # Edge case tests
         test_edge_single_suburb,
         test_edge_no_confidence_intervals,

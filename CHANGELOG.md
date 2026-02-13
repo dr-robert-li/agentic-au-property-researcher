@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - No additional features planned at this time
 
+## [1.7.1] - 2026-02-14
+
+### Fixed
+- **PDF Unicode Crash**: Fixed `fpdf2` crash when API-generated text contains Unicode characters (en-dash, em-dash, smart quotes, etc.) outside Helvetica's Latin-1 range
+  - Added `_sanitize()` function that replaces 9 common Unicode characters with ASCII equivalents
+  - Overrode `cell()` and `multi_cell()` in `PropertyReportPDF` subclass as a catch-all — all text is sanitized before reaching `fpdf2`, regardless of which data field it comes from
+  - Characters handled: en-dash (U+2013), em-dash (U+2014), smart single/double quotes (U+2018/19/1C/1D), ellipsis (U+2026), bullet (U+2022), non-breaking space (U+00A0)
+
+### Added
+- **PDF Unicode Regression Tests**: 3 new test functions in `tests/test_exports.py`
+  - `test_pdf_sanitize_function`: Unit tests for `_sanitize()` covering all 9 character replacements, ASCII passthrough, and mixed strings
+  - `test_pdf_cell_override_sanitizes`: Verifies `cell()` and `multi_cell()` overrides sanitize positional and keyword text arguments
+  - `test_pdf_realworld_unicode_data`: End-to-end PDF generation with Unicode patterns from actual API data (en-dashes in infrastructure, smart quotes in risk analysis)
+- Strengthened existing `test_security_unicode_handling` to strictly assert PDF success (previously tolerated failures)
+
+### Changed
+- `src/reporting/pdf_exporter.py`: Added `_sanitize()` and `PropertyReportPDF.cell()`/`multi_cell()` overrides
+
 ## [1.7.0] - 2026-02-13
 
 ### Added

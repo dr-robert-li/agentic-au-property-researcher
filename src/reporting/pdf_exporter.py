@@ -51,6 +51,30 @@ class PropertyReportPDF(FPDF):
         self.set_margins(MARGIN, MARGIN, MARGIN)
         self._is_title_page = True
 
+    def cell(self, *args, **kwargs):
+        """Override to sanitize text before rendering."""
+        if args:
+            args = list(args)
+            for i, a in enumerate(args):
+                if isinstance(a, str):
+                    args[i] = _sanitize(a)
+        for k in ('txt', 'text'):
+            if k in kwargs and isinstance(kwargs[k], str):
+                kwargs[k] = _sanitize(kwargs[k])
+        return super().cell(*args, **kwargs)
+
+    def multi_cell(self, *args, **kwargs):
+        """Override to sanitize text before rendering."""
+        if args:
+            args = list(args)
+            for i, a in enumerate(args):
+                if isinstance(a, str):
+                    args[i] = _sanitize(a)
+        for k in ('txt', 'text'):
+            if k in kwargs and isinstance(kwargs[k], str):
+                kwargs[k] = _sanitize(kwargs[k])
+        return super().multi_cell(*args, **kwargs)
+
     def header(self):
         """Page header with run ID."""
         if self._is_title_page:
@@ -102,16 +126,14 @@ def _fmt_num(value, decimals: int = 1) -> str:
 
 
 def _safe_str(value) -> str:
-    """Safely convert a value to a PDF-safe string."""
+    """Safely convert a value to a string."""
     if value is None:
         return "N/A"
     if isinstance(value, dict):
-        raw = "; ".join(f"{k}: {v}" for k, v in value.items())
-    elif isinstance(value, list):
-        raw = "; ".join(str(item) for item in value) if value else "N/A"
-    else:
-        raw = str(value)
-    return _sanitize(raw)
+        return "; ".join(f"{k}: {v}" for k, v in value.items())
+    if isinstance(value, list):
+        return "; ".join(str(item) for item in value) if value else "N/A"
+    return str(value)
 
 
 def _add_title_page(pdf: PropertyReportPDF, run_result: RunResult):
@@ -145,7 +167,7 @@ def _add_title_page(pdf: PropertyReportPDF, run_result: RunResult):
         ('Run ID', run_result.run_id),
         ('Date', run_result.timestamp.strftime('%Y-%m-%d %H:%M:%S')),
         ('Provider', run_result.user_input.get_provider_display()),
-        ('Regions', _sanitize(', '.join(run_result.user_input.regions))),
+        ('Regions', ', '.join(run_result.user_input.regions)),
         ('Dwelling Type', run_result.user_input.dwelling_type.title()),
         ('Max Price', _fmt_currency(run_result.user_input.max_median_price)),
         ('Suburbs Analyzed', str(len(run_result.suburbs))),
@@ -228,7 +250,7 @@ def _add_overview_section(pdf: PropertyReportPDF, run_result: RunResult):
         pdf.set_font('Helvetica', '', 8)
         row_data = [
             str(report.rank or idx + 1),
-            _sanitize(m.identification.name),
+            m.identification.name,
             m.identification.state,
             _fmt_currency(m.market_current.median_price),
             _fmt_pct(gp.projected_growth_pct.get(5, 0)),
@@ -295,7 +317,7 @@ def _add_suburb_section(pdf: PropertyReportPDF, report: SuburbReport, output_dir
     pdf.set_font('Helvetica', 'B', 18)
     pdf.set_text_color(*COLOR_PRIMARY)
     rank_text = f"#{report.rank} " if report.rank else ""
-    pdf.cell(CONTENT_WIDTH, 12, f'{rank_text}{_sanitize(m.get_display_name())}', new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(CONTENT_WIDTH, 12, f'{rank_text}{m.get_display_name()}', new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
 
     # Investment summary metrics
@@ -356,7 +378,7 @@ def _add_suburb_section(pdf: PropertyReportPDF, report: SuburbReport, output_dir
         _add_sub_heading(pdf, 'Key Growth Drivers')
         pdf.set_font('Helvetica', '', 9)
         for driver in gp.key_drivers[:8]:
-            driver_text = _sanitize(str(driver))[:120]
+            driver_text = str(driver)[:120]
             pdf.cell(5, 5, '', align='L')
             pdf.cell(CONTENT_WIDTH - 5, 5, f'- {driver_text}', new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
@@ -411,7 +433,7 @@ def _add_suburb_section(pdf: PropertyReportPDF, report: SuburbReport, output_dir
     if gp.risk_analysis:
         _add_sub_heading(pdf, 'Risk Analysis')
         pdf.set_font('Helvetica', '', 9)
-        risk_text = _sanitize(str(gp.risk_analysis))[:500]
+        risk_text = str(gp.risk_analysis)[:500]
         pdf.multi_cell(CONTENT_WIDTH, 5, risk_text)
         pdf.ln(2)
 
