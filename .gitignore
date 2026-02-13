@@ -64,10 +64,7 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
-tests/
-test_*.py
-*_test.py
-test*/
+test_output/
 
 # Progress tracking
 TODO.md

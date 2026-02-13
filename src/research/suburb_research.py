@@ -209,55 +209,104 @@ Begin your response with the opening brace {{
         return _create_fallback_metrics(candidate)
 
 
-def _parse_metrics_from_json(data: dict) -> SuburbMetrics:
-    """Parse JSON data into SuburbMetrics object."""
+def _coerce_to_str_list(items: list) -> list[str]:
+    """Coerce a list of mixed items (strings, dicts, etc.) to a list of strings.
 
-    # Parse identification
+    The API sometimes returns structured dicts where we expect plain strings,
+    e.g. {"mode": "bus", "name": "Route 520", "description": "..."} instead of
+    "Route 520 (bus) - ...". This preserves the information as a readable string.
+    """
+    result = []
+    for item in items:
+        if isinstance(item, str):
+            result.append(item)
+        elif isinstance(item, dict):
+            # Build a readable string from the dict values
+            parts = [str(v) for v in item.values() if v]
+            result.append(" — ".join(parts))
+        else:
+            result.append(str(item))
+    return result
+
+
+def _parse_metrics_from_json(data: dict) -> SuburbMetrics:
+    """Parse JSON data into SuburbMetrics object.
+
+    Each section is parsed independently so one bad section doesn't
+    lose all the other researched data.
+    """
+
+    # Parse identification (required — let it raise if broken)
     identification = SuburbIdentification(**data.get("identification", {}))
 
-    # Parse market metrics
+    # Parse market metrics (required — let it raise if broken)
     market_current = MarketMetricsCurrent(**data.get("market_current", {}))
 
     # Parse market history
-    market_history_data = data.get("market_history", {})
-    market_history = MarketMetricsHistory(
-        price_history=[TimePoint(**tp) for tp in market_history_data.get("price_history", [])],
-        dom_history=[TimePoint(**tp) for tp in market_history_data.get("dom_history", [])],
-        clearance_history=[TimePoint(**tp) for tp in market_history_data.get("clearance_history", [])],
-        turnover_history=[TimePoint(**tp) for tp in market_history_data.get("turnover_history", [])]
-    )
+    try:
+        market_history_data = data.get("market_history", {})
+        market_history = MarketMetricsHistory(
+            price_history=[TimePoint(**tp) for tp in market_history_data.get("price_history", [])],
+            dom_history=[TimePoint(**tp) for tp in market_history_data.get("dom_history", [])],
+            clearance_history=[TimePoint(**tp) for tp in market_history_data.get("clearance_history", [])],
+            turnover_history=[TimePoint(**tp) for tp in market_history_data.get("turnover_history", [])]
+        )
+    except Exception as e:
+        logger.warning("Failed to parse market_history: %s", e)
+        market_history = MarketMetricsHistory()
 
     # Parse physical config
-    physical_config = PhysicalConfig(**data.get("physical_config", {}))
+    try:
+        physical_config = PhysicalConfig(**data.get("physical_config", {}))
+    except Exception as e:
+        logger.warning("Failed to parse physical_config: %s", e)
+        physical_config = PhysicalConfig()
 
     # Parse demographics
-    demographics = Demographics(**data.get("demographics", {}))
+    try:
+        demographics = Demographics(**data.get("demographics", {}))
+    except Exception as e:
+        logger.warning("Failed to parse demographics: %s", e)
+        demographics = Demographics()
 
-    # Parse infrastructure
-    infrastructure = Infrastructure(**data.get("infrastructure", {}))
+    # Parse infrastructure — coerce list fields that the API may return as dicts
+    try:
+        infra_data = data.get("infrastructure", {})
+        for list_field in ("current_transport", "future_transport",
+                           "current_infrastructure", "planned_infrastructure"):
+            if list_field in infra_data and isinstance(infra_data[list_field], list):
+                infra_data[list_field] = _coerce_to_str_list(infra_data[list_field])
+        infrastructure = Infrastructure(**infra_data)
+    except Exception as e:
+        logger.warning("Failed to parse infrastructure: %s", e)
+        infrastructure = Infrastructure()
 
     # Parse growth projections
-    growth_data = data.get("growth_projections", {})
+    try:
+        growth_data = data.get("growth_projections", {})
 
-    # Convert string keys to int for growth projections
-    projected_growth = {}
-    for k, v in growth_data.get("projected_growth_pct", {}).items():
-        projected_growth[int(k)] = float(v)
+        # Convert string keys to int for growth projections
+        projected_growth = {}
+        for k, v in growth_data.get("projected_growth_pct", {}).items():
+            projected_growth[int(k)] = float(v)
 
-    confidence_intervals = {}
-    for k, v in growth_data.get("confidence_intervals", {}).items():
-        if isinstance(v, list) and len(v) == 2:
-            confidence_intervals[int(k)] = (float(v[0]), float(v[1]))
+        confidence_intervals = {}
+        for k, v in growth_data.get("confidence_intervals", {}).items():
+            if isinstance(v, list) and len(v) == 2:
+                confidence_intervals[int(k)] = (float(v[0]), float(v[1]))
 
-    growth_projections = GrowthProjections(
-        projected_growth_pct=projected_growth,
-        confidence_intervals=confidence_intervals,
-        risk_analysis=growth_data.get("risk_analysis", ""),
-        key_drivers=growth_data.get("key_drivers", []),
-        growth_score=float(growth_data.get("growth_score", 0)),
-        risk_score=float(growth_data.get("risk_score", 0)),
-        composite_score=float(growth_data.get("composite_score", 0))
-    )
+        growth_projections = GrowthProjections(
+            projected_growth_pct=projected_growth,
+            confidence_intervals=confidence_intervals,
+            risk_analysis=growth_data.get("risk_analysis", ""),
+            key_drivers=growth_data.get("key_drivers", []),
+            growth_score=float(growth_data.get("growth_score", 0)),
+            risk_score=float(growth_data.get("risk_score", 0)),
+            composite_score=float(growth_data.get("composite_score", 0))
+        )
+    except Exception as e:
+        logger.warning("Failed to parse growth_projections: %s", e)
+        growth_projections = GrowthProjections()
 
     # Create and return SuburbMetrics
     return SuburbMetrics(

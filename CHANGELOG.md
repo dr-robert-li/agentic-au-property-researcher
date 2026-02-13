@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - No additional features planned at this time
 
+## [1.5.0] - 2026-02-13
+
+### Changed
+- **Test Organization**: Moved all test files from project root into `tests/` directory
+  - Moved 9 test files: `test_cache.py`, `test_charts.py`, `test_comparison.py`, `test_discovery.py`, `test_exports.py`, `test_models.py`, `test_perplexity.py`, `test_pipeline.py`, `test_research_ranking.py`
+  - Updated `sys.path.insert` in all test files to use `parent.parent / "src"` for correct module resolution
+  - Updated hardcoded source paths in `test_pipeline.py` structural tests
+- **API Response Resilience**: Improved parsing of LLM API responses in `suburb_research.py`
+  - Added `_coerce_to_str_list()` helper to convert mixed-type lists (dicts, strings) returned by AI providers into `list[str]`
+  - Rewrote `_parse_metrics_from_json()` with section-isolated parsing — each section (market_history, physical_config, demographics, infrastructure, growth_projections) is parsed independently so one bad section doesn't lose all other researched data
+  - Infrastructure list fields (`current_transport`, `future_transport`, `current_infrastructure`, `planned_infrastructure`) are now coerced before Pydantic validation
+  - Only `identification` and `market_current` sections are required; all others fall back to empty defaults on parse failure
+
+### Fixed
+- Fixed Pydantic validation errors when API returns dicts instead of strings for infrastructure fields (e.g. `{'mode': 'bus', 'name': 'Route 520'}` instead of `"Route 520 (bus)"`)
+- Fixed overview report CSS not loading (added `css_base: '.'` to overview report template context)
+
 ## [1.4.0] - 2026-02-13
 
 ### Added
@@ -263,6 +280,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.5.0** (2026-02-13): Test organization, API response resilience, CSS fix
 - **v1.4.0** (2026-02-13): Pipeline resilience + real-time progress visibility
 - **v1.3.0** (2026-02-13): Historical data caching + run comparison mode
 - **v1.2.0** (2026-02-13): PDF and Excel export functionality
