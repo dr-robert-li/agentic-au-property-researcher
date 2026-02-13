@@ -243,7 +243,50 @@ Examples:
         help="Automatically generate Excel report after completion"
     )
 
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear all cached research data and exit"
+    )
+
+    parser.add_argument(
+        "--compare",
+        nargs="+",
+        metavar="RUN_ID",
+        help="Compare 2-3 past runs side-by-side (provide run IDs)"
+    )
+
     args = parser.parse_args()
+
+    # Handle --clear-cache
+    if args.clear_cache:
+        from research.cache import get_cache
+        cache = get_cache()
+        stats = cache.stats()
+        print(f"Cache stats: {stats['discovery_count']} discovery, {stats['research_count']} research entries")
+        print(f"Total size: {stats['total_size_bytes']:,} bytes")
+        count = cache.clear()
+        print(f"Cleared {count} cache entries.")
+        sys.exit(0)
+
+    # Handle --compare
+    if args.compare:
+        run_ids = args.compare
+        if len(run_ids) < 2 or len(run_ids) > 3:
+            print("Error: --compare requires 2 or 3 run IDs")
+            sys.exit(1)
+        from research.comparison import compare_runs
+        from reporting.comparison_renderer import generate_comparison_report
+        try:
+            comparison = compare_runs(run_ids, settings.OUTPUT_DIR)
+            output_dir = settings.OUTPUT_DIR / f"compare_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+            report_path = generate_comparison_report(comparison, output_dir)
+            print(f"\n✅ Comparison report generated: {report_path}")
+            print(f"🌐 Open in browser: file://{report_path.absolute()}")
+        except Exception as e:
+            print(f"❌ Comparison failed: {e}")
+            sys.exit(1)
+        sys.exit(0)
 
     # Validate num_suburbs
     if args.num_suburbs > 25:

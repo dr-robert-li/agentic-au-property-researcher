@@ -45,6 +45,7 @@ claude*.md
 
 # Output files
 runs/
+cache/
 *.html
 *.png
 *.jpg

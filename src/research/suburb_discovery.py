@@ -2,11 +2,15 @@
 Suburb discovery functionality using deep research.
 """
 import json
+import logging
 from typing import Optional
 
 from config import regions_data
 from models.inputs import UserInput
 from research.perplexity_client import get_client
+from research.cache import get_cache, ResearchCache
+
+logger = logging.getLogger(__name__)
 
 
 class SuburbCandidate:
@@ -89,6 +93,32 @@ Begin your response with the opening square bracket [
     print(f"Discovering suburbs {region_desc} under ${user_input.max_median_price:,.0f} for {user_input.dwelling_type}s...")
     print(f"   Provider: {provider_label}")
 
+    # Check cache first
+    cache = get_cache()
+    price_bucket = ResearchCache.bucket_price(user_input.max_median_price)
+    sorted_regions = ",".join(sorted(user_input.regions))
+    cache_key_parts = dict(
+        price_bucket=str(price_bucket),
+        dwelling_type=user_input.dwelling_type,
+        regions=sorted_regions,
+    )
+
+    cached = cache.get("discovery", **cache_key_parts)
+    if cached is not None:
+        logger.info("Cache HIT for discovery")
+        print("   (Using cached discovery results)")
+        candidates = [SuburbCandidate(item) for item in cached if isinstance(item, dict)]
+        candidates = [
+            c for c in candidates
+            if c.median_price > 0 and c.median_price <= user_input.max_median_price
+        ]
+        if max_results:
+            candidates = candidates[:max_results]
+        print(f"✓ Found {len(candidates)} qualifying suburbs (cached)")
+        return candidates
+
+    logger.info("Cache MISS for discovery")
+
     # Make the API call
     try:
         response = client.call_deep_research(
@@ -104,13 +134,19 @@ Begin your response with the opening square bracket [
             print(f"Raw response: {response[:500]}")
             raise Exception("Failed to parse suburb discovery response as JSON")
 
-        # Convert to SuburbCandidate objects
+        # Normalize data to list format for caching
         if isinstance(data, list):
-            candidates = [SuburbCandidate(item) for item in data if isinstance(item, dict)]
+            raw_list = [item for item in data if isinstance(item, dict)]
         elif isinstance(data, dict) and "suburbs" in data:
-            candidates = [SuburbCandidate(item) for item in data["suburbs"]]
+            raw_list = data["suburbs"]
         else:
             raise Exception(f"Unexpected response format: {type(data)}")
+
+        # Cache the raw list before filtering
+        cache.put("discovery", raw_list, **cache_key_parts)
+
+        # Convert to SuburbCandidate objects
+        candidates = [SuburbCandidate(item) for item in raw_list]
 
         # Filter by price (in case the API included some above threshold)
         candidates = [

@@ -324,19 +324,23 @@ agentic-re-researcher/
 │   ├── models/              # Pydantic data models
 │   │   ├── inputs.py        # User input models
 │   │   ├── suburb_metrics.py # Suburb data models
-│   │   └── run_result.py    # Result models
+│   │   ├── run_result.py    # Result models
+│   │   └── comparison.py    # Comparison data models
 │   ├── research/            # Research and API integration
 │   │   ├── perplexity_client.py  # Perplexity provider client
 │   │   ├── anthropic_client.py   # Anthropic Claude provider client
 │   │   ├── suburb_discovery.py
 │   │   ├── suburb_research.py
-│   │   └── ranking.py
+│   │   ├── ranking.py
+│   │   ├── cache.py         # File-based research cache
+│   │   └── comparison.py    # Multi-run comparison logic
 │   ├── reporting/           # Report generation
 │   │   ├── charts.py        # Chart generation
 │   │   ├── html_renderer.py # HTML rendering
 │   │   ├── exports.py       # Export orchestration (PDF/Excel)
 │   │   ├── pdf_exporter.py  # PDF report generation (fpdf2)
-│   │   └── excel_exporter.py # Excel workbook generation (openpyxl)
+│   │   ├── excel_exporter.py # Excel workbook generation (openpyxl)
+│   │   └── comparison_renderer.py # Comparison report generation
 │   ├── ui/                  # User interfaces
 │   │   ├── web/
 │   │   │   ├── server.py    # FastAPI web server
@@ -347,6 +351,7 @@ agentic-re-researcher/
 │   └── app.py              # Main application orchestrator
 ├── tests/                   # Test suite
 ├── runs/                    # Output directory (gitignored)
+├── cache/                   # Research cache (gitignored)
 ├── .env.example            # Environment template
 ├── .gitignore
 ├── requirements.txt

@@ -41,7 +41,7 @@ API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
 app = FastAPI(
     title="Australian Property Research",
     description="AI-powered property investment research for Australian real estate",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 # Templates directory
@@ -337,15 +337,107 @@ async def export_report(run_id: str, format: str):
     )
 
 
+def _get_completed_runs():
+    """Get list of completed runs from filesystem."""
+    runs = []
+    if output_base.exists():
+        for run_dir in sorted(output_base.iterdir(), reverse=True):
+            if run_dir.is_dir() and not run_dir.name.startswith("compare_"):
+                index_file = run_dir / "index.html"
+                if index_file.exists():
+                    runs.append({
+                        "run_id": run_dir.name,
+                        "path": str(run_dir),
+                        "created": datetime.fromtimestamp(
+                            run_dir.stat().st_mtime
+                        ).strftime("%Y-%m-%d %H:%M:%S"),
+                    })
+    return runs
+
+
+@app.get("/compare", response_class=HTMLResponse)
+async def compare_select(request: Request):
+    """Show run selection page for comparison."""
+    runs = _get_completed_runs()
+    return templates.TemplateResponse(
+        "compare_select.html",
+        {"request": request, "runs": runs, "error": None}
+    )
+
+
+@app.post("/compare")
+async def compare_submit(
+    request: Request,
+    run_ids: List[str] = Form(...),
+):
+    """Generate comparison report for selected runs."""
+    if len(run_ids) < 2 or len(run_ids) > 3:
+        runs = _get_completed_runs()
+        return templates.TemplateResponse(
+            "compare_select.html",
+            {
+                "request": request,
+                "runs": runs,
+                "error": "Please select 2 or 3 runs to compare.",
+            }
+        )
+
+    try:
+        from research.comparison import compare_runs, ComparisonError
+        from reporting.comparison_renderer import generate_comparison_report
+
+        comparison = compare_runs(run_ids, output_base)
+        compare_id = f"compare_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        compare_dir = output_base / compare_id
+        generate_comparison_report(comparison, compare_dir)
+        return RedirectResponse(f"/compare/{compare_id}", status_code=303)
+    except Exception as e:
+        runs = _get_completed_runs()
+        return templates.TemplateResponse(
+            "compare_select.html",
+            {"request": request, "runs": runs, "error": str(e)}
+        )
+
+
+@app.get("/compare/{compare_id}", response_class=HTMLResponse)
+async def view_comparison(compare_id: str):
+    """View a comparison report."""
+    report_path = output_base / compare_id / "index.html"
+    if not report_path.exists():
+        return HTMLResponse("Comparison report not found.", status_code=404)
+    return FileResponse(report_path)
+
+
+@app.get("/cache/stats")
+async def cache_stats():
+    """Get cache statistics."""
+    from research.cache import get_cache
+    cache = get_cache()
+    return cache.stats()
+
+
+@app.post("/cache/clear")
+async def cache_clear():
+    """Clear the research cache."""
+    from research.cache import get_cache
+    cache = get_cache()
+    count = cache.clear()
+    return {"cleared": count}
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    from research.cache import get_cache
+    cache = get_cache()
+    cache_info = cache.stats()
     return {
         "status": "healthy",
         "available_providers": settings.AVAILABLE_PROVIDERS,
         "default_provider": settings.DEFAULT_PROVIDER,
         "active_runs": len(active_runs),
-        "completed_runs": len(completed_runs)
+        "completed_runs": len(completed_runs),
+        "cache_entries": cache_info["total_entries"],
     }
 
 

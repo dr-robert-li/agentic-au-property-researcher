@@ -51,3 +51,9 @@ DEFAULT_REGIONS = ["All Australia"]
 API_TIMEOUT = 300  # 5 minutes for deep research calls
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
+
+# Cache Configuration
+CACHE_DIR = BASE_DIR / "cache"
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
+CACHE_DISCOVERY_TTL = int(os.getenv("CACHE_DISCOVERY_TTL", "86400"))  # 24 hours
+CACHE_RESEARCH_TTL = int(os.getenv("CACHE_RESEARCH_TTL", "604800"))  # 7 days

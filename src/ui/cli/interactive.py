@@ -75,6 +75,22 @@ def print_welcome():
     )
     console.print()
 
+    # Show cache stats if entries exist
+    try:
+        from research.cache import get_cache
+        cache = get_cache()
+        stats = cache.stats()
+        total = stats["total_entries"]
+        if total > 0:
+            console.print(
+                f"[dim]Cache: {stats['discovery_count']} discovery, "
+                f"{stats['research_count']} research entries "
+                f"({stats['expired_count']} expired)[/dim]"
+            )
+            console.print()
+    except Exception:
+        pass
+
 
 def select_provider() -> str:
     """Interactive provider selection. Returns provider name."""

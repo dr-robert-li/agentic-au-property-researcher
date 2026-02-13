@@ -1,12 +1,12 @@
 # Agentic Australian Property Researcher 🏘️
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 **Author:** Dr. Robert Li
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 
 ---
 
@@ -61,6 +61,20 @@ AI-powered property investment researcher that generates comprehensive suburb-le
   - Excel export with 7 structured sheets (overview, market metrics, growth projections, property config, demographics, infrastructure, price history)
   - On-demand export from web UI, interactive CLI, or CLI flags
   - Cached exports for instant re-download
+- **Historical Data Caching**:
+  - File-based JSON cache reduces redundant API calls and speeds up repeated research
+  - Discovery cache (24-hour TTL) keyed by price bucket, dwelling type, and regions
+  - Per-suburb research cache (7-day TTL) keyed by suburb, state, and dwelling type
+  - Price bucketing (nearest $50k) for better cache hit rates
+  - Cache statistics, clear controls via web UI, CLI, and API endpoints
+  - Configurable via environment variables (`CACHE_ENABLED`, `CACHE_DISCOVERY_TTL`, `CACHE_RESEARCH_TTL`)
+- **Run Comparison Mode**:
+  - Compare 2-3 past research runs side-by-side
+  - Identifies overlapping suburbs across runs with metric deltas (price, score, growth)
+  - Lists unique suburbs per run
+  - Run configuration comparison table
+  - Available from web UI (runs list + dedicated comparison page) and CLI (`--compare` flag)
+  - Generates standalone comparison HTML reports
 - **Triple Interface**: Three ways to use the application
   - Basic command-line interface (argparse)
   - Interactive CLI with autocomplete and validation (prompt_toolkit + rich)
@@ -184,6 +198,8 @@ python -m src.app \
 - `--run-id`: Custom run ID (default: auto-generated timestamp)
 - `--export-pdf`: Automatically generate PDF report after completion
 - `--export-xlsx`: Automatically generate Excel report after completion
+- `--clear-cache`: Clear the research cache and display statistics, then exit
+- `--compare RUN_ID [RUN_ID ...]`: Compare 2-3 past runs side-by-side and generate a comparison report
 
 #### Examples
 
@@ -228,6 +244,16 @@ python -m src.app \
   --max-price 700000 \
   --dwelling-type house \
   --export-pdf --export-xlsx
+```
+
+**Clear research cache**:
+```bash
+python -m src.app --clear-cache
+```
+
+**Compare past runs**:
+```bash
+python -m src.app --compare 2026-02-10_14-30-00 2026-02-12_09-15-00
 ```
 
 **All of Australia** (warning: slow and expensive):
@@ -349,6 +375,11 @@ ANTHROPIC_API_KEY=your-anthropic-api-key-here
 # Optional Settings
 OUTPUT_DIR=runs
 DEFAULT_PORT=8080
+
+# Cache Settings
+CACHE_ENABLED=true              # Enable/disable research cache (default: true)
+CACHE_DISCOVERY_TTL=86400       # Discovery cache TTL in seconds (default: 24 hours)
+CACHE_RESEARCH_TTL=604800       # Research cache TTL in seconds (default: 7 days)
 ```
 
 At least one API key is required. If both are provided, the provider toggle becomes available in all interfaces.
@@ -398,6 +429,9 @@ src/
 8. **PDF Exporter** (`reporting/pdf_exporter.py`): Generates styled PDF reports via fpdf2
 9. **Excel Exporter** (`reporting/excel_exporter.py`): Generates multi-sheet Excel workbooks via openpyxl
 10. **Export Orchestrator** (`reporting/exports.py`): Coordinates export generation and metadata reconstruction
+11. **Research Cache** (`research/cache.py`): File-based JSON cache with TTL for discovery and per-suburb results
+12. **Run Comparison** (`research/comparison.py`): Side-by-side comparison of 2-3 past runs with overlap detection
+13. **Comparison Renderer** (`reporting/comparison_renderer.py`): Generates comparison HTML reports
 
 ## Data Models
 
@@ -482,10 +516,8 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 - [x] Interactive CLI with prompt_toolkit
 - [x] Dual AI provider support (Perplexity + Anthropic Claude)
 - [x] Export to PDF/Excel
-- [ ] Historical data caching
-- [ ] Comparison mode for multiple runs
-- [ ] Email report delivery
-- [ ] RESTful API for integration
+- [x] Historical data caching
+- [x] Comparison mode for multiple runs
 
 ## Acknowledgments
 

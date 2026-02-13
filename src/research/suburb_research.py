@@ -2,7 +2,12 @@
 Per-suburb detailed research functionality using deep research.
 """
 import json
+import logging
 from typing import Optional
+
+from research.cache import get_cache
+
+logger = logging.getLogger(__name__)
 
 from models.suburb_metrics import (
     SuburbMetrics,
@@ -149,6 +154,24 @@ Begin your response with the opening brace {{
 
     print(f"Researching {candidate.name}, {candidate.state} in detail...")
 
+    # Check cache first
+    cache = get_cache()
+    cache_key_parts = dict(
+        suburb_name=candidate.name.lower(),
+        state=candidate.state.lower(),
+        dwelling_type=dwelling_type,
+    )
+
+    cached = cache.get("research", **cache_key_parts)
+    if cached is not None:
+        logger.info("Cache HIT for %s", candidate.name)
+        print(f"   (Using cached research data)")
+        metrics = _parse_metrics_from_json(cached)
+        print(f"✓ Research complete for {candidate.name} (cached)")
+        return metrics
+
+    logger.info("Cache MISS for %s", candidate.name)
+
     try:
         # Make the API call with extended timeout for deep research
         response = client.call_deep_research(
@@ -163,6 +186,9 @@ Begin your response with the opening brace {{
             print(f"Warning: Could not parse JSON for {candidate.name}: {e}")
             # Fall back to basic data from candidate
             return _create_fallback_metrics(candidate)
+
+        # Cache the raw parsed data
+        cache.put("research", data, **cache_key_parts)
 
         # Parse into SuburbMetrics
         metrics = _parse_metrics_from_json(data)

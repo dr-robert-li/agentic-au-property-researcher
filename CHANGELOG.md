@@ -8,10 +8,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Historical data caching layer
-- Multi-run comparison mode
-- Email report delivery
-- RESTful API endpoints
+- No additional features planned at this time
+
+## [1.3.0] - 2026-02-13
+
+### Added
+- **Historical Data Caching** (`src/research/cache.py`): File-based JSON cache to avoid redundant API calls
+  - Discovery cache keyed by `(price_bucket, dwelling_type, sorted_regions)` with configurable TTL (default 24 hours)
+  - Per-suburb research cache keyed by `(suburb_name, state, dwelling_type)` with configurable TTL (default 7 days)
+  - Price bucketing to nearest $50k for improved cache hit rates
+  - SHA256-based deterministic cache keys with JSON data files
+  - `cache_index.json` metadata tracking with automatic corrupt-index recovery
+  - Singleton `get_cache()` factory with `CacheConfig` dataclass
+  - Transparent integration: callers (app.py, server.py) unchanged; cache checks wrap API calls in discovery/research modules
+  - Logs cache HIT/MISS at info level for observability
+- **Cache Controls**:
+  - CLI: `--clear-cache` flag to clear cache, display stats, and exit
+  - Web UI: `GET /cache/stats` and `POST /cache/clear` API endpoints
+  - Interactive CLI: cache stats displayed at startup when entries exist
+  - Health endpoint (`GET /health`) now includes `cache_entries` count
+- **Cache Configuration** via environment variables:
+  - `CACHE_ENABLED` (default: true) — enable/disable caching
+  - `CACHE_DISCOVERY_TTL` (default: 86400) — discovery cache TTL in seconds
+  - `CACHE_RESEARCH_TTL` (default: 604800) — research cache TTL in seconds
+- **Run Comparison Mode** (`src/research/comparison.py`): Compare 2-3 past research runs side-by-side
+  - Overlap detection by normalized `(name.lower(), state.lower())` matching
+  - Per-suburb metric deltas: median price, growth score, composite score, 5-year projected growth
+  - Unique suburbs per run identification
+  - Run configuration comparison (provider, dwelling type, max price, regions, suburb count)
+  - Loads past runs via existing `reconstruct_run_result()` infrastructure
+- **Comparison Data Models** (`src/models/comparison.py`):
+  - `RunSummary`, `SuburbRunMetrics`, `SuburbDelta`, `ComparisonResult` Pydantic models
+  - `price_delta` and `score_delta` computed properties on `SuburbDelta`
+- **Comparison Report Renderer** (`src/reporting/comparison_renderer.py`):
+  - Generates standalone comparison HTML reports via Jinja2
+  - Output to `runs/compare_{timestamp}/index.html`
+- **Comparison UI**:
+  - Web: `GET /compare` run selection page with checkbox validation (2-3 runs)
+  - Web: `POST /compare` generates comparison and redirects to report
+  - Web: `GET /compare/{compare_id}` serves comparison report
+  - Web: "Compare Runs" button on runs list page
+  - CLI: `--compare RUN_ID [RUN_ID ...]` flag for command-line comparison
+- **Comparison Templates**:
+  - `compare_select.html` — run selection with JavaScript validation
+  - `compare_report.html` — self-contained comparison report with summary stats, config table, overlapping suburbs, unique suburbs
+- **Unit Tests**: 66 new tests
+  - `test_cache.py`: 41 tests covering key generation, price bucketing, put/get, TTL, invalidation, clear, stats, edge cases, integration
+  - `test_comparison.py`: 25 tests covering models, run summary computation, overlap detection, filesystem reconstruction, rendering
+
+### Changed
+- `src/research/suburb_discovery.py`: Checks cache before API call; caches discovery results after successful parse
+- `src/research/suburb_research.py`: Checks cache before API call; caches per-suburb research results after successful parse
+- `src/ui/web/server.py`: Added comparison endpoints, cache endpoints, helper `_get_completed_runs()` (excludes compare_ dirs)
+- `src/ui/web/templates/runs_list.html`: Added "Compare Runs" button
+- `src/app.py`: Added `--clear-cache` and `--compare` CLI flags
+- `src/ui/cli/interactive.py`: Shows cache stats at startup
+- `.gitignore`: Added `cache/` directory
 
 ## [1.2.0] - 2026-02-13
 
@@ -178,6 +230,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.3.0** (2026-02-13): Historical data caching + run comparison mode
 - **v1.2.0** (2026-02-13): PDF and Excel export functionality
 - **v1.1.0** (2026-02-13): Dual AI provider support (Perplexity + Anthropic Claude)
 - **v1.0.0** (2026-02-10): Web interface + interactive CLI
