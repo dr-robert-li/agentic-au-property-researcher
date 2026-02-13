@@ -10,6 +10,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - No additional features planned at this time
 
+## [1.7.0] - 2026-02-13
+
+### Added
+- **Parallel Discovery**: Multi-region suburb discovery runs concurrently instead of sequentially
+  - `parallel_discover_suburbs()` splits multi-region and "All Australia" queries into per-region parallel calls using `ThreadPoolExecutor`
+  - Single-region requests delegate directly to `discover_suburbs()` with no threading overhead
+  - Results merged and deduplicated by `(name, state)` across regions
+  - `AccountErrorSignal` class provides thread-safe propagation of auth/rate-limit errors across workers
+  - Partial results preserved: if some regions fail, successful regions still contribute candidates
+- **Parallel Research**: Per-suburb detailed research runs concurrently
+  - `parallel_research_suburbs()` researches multiple suburbs in parallel using `ThreadPoolExecutor`
+  - Order-preserving: results returned in original candidate order
+  - Account-level errors (auth/rate-limit) stop all workers but return partial results (not raised)
+  - Transient failures use fallback metrics — no slots lost
+- **Thread-Safe Cache**: `ResearchCache` now uses `threading.RLock` for concurrent access safety
+  - All public methods (`get`, `put`, `invalidate`, `clear`, `stats`) wrapped with reentrant lock
+- **Parallel Execution Settings**: 4 new environment-configurable settings
+  - `DISCOVERY_MAX_WORKERS` (default: 4) — max parallel region discovery workers
+  - `RESEARCH_MAX_WORKERS` (default: 3) — max parallel suburb research workers
+  - `DISCOVERY_TIMEOUT` (default: 120s) — timeout per region discovery call
+  - `RESEARCH_TIMEOUT` (default: 240s) — timeout per suburb research call
+- **Unit Tests**: 14 new parallel pipeline tests (`tests/test_parallel.py`)
+  - AccountErrorSignal (3): initial state, set works, first-error-wins
+  - Parallel discovery (5): single-region delegation, multi-region merge, deduplication, All Australia split, partial failure
+  - Parallel research (4): all succeed, order preserved, transient fallback, account error partial results
+  - Cache thread safety (2): concurrent writes, concurrent read+write
+
+### Changed
+- `src/research/suburb_discovery.py`: Added `AccountErrorSignal`, `_discover_for_single_region()`, `parallel_discover_suburbs()`; timeout now uses `settings.DISCOVERY_TIMEOUT`
+- `src/research/suburb_research.py`: Added `parallel_research_suburbs()`; timeout now uses `settings.RESEARCH_TIMEOUT`
+- `src/research/cache.py`: Added `threading.RLock` for thread safety
+- `src/config/settings.py`: Added 4 parallel execution settings
+- `src/app.py`: Wired up `parallel_discover_suburbs()` and `parallel_research_suburbs()` in pipeline
+
 ## [1.6.0] - 2026-02-13
 
 ### Added
@@ -304,6 +338,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.7.0** (2026-02-13): Parallel discovery + parallel research pipeline
 - **v1.6.0** (2026-02-13): Cache resilience + home page cache management
 - **v1.5.0** (2026-02-13): Test organization, API response resilience, CSS fix
 - **v1.4.0** (2026-02-13): Pipeline resilience + real-time progress visibility

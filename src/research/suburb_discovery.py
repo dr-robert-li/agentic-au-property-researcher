@@ -3,14 +3,44 @@ Suburb discovery functionality using deep research.
 """
 import json
 import logging
-from typing import Optional
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, Callable
 
-from config import regions_data
+from config import regions_data, settings
 from models.inputs import UserInput
-from research.perplexity_client import get_client
+from research.perplexity_client import get_client, PerplexityRateLimitError, PerplexityAuthError
+from research.anthropic_client import AnthropicRateLimitError, AnthropicAuthError
 from research.cache import get_cache, ResearchCache
 
 logger = logging.getLogger(__name__)
+
+# Account-level errors that should stop all parallel workers
+API_ACCOUNT_ERRORS = (
+    PerplexityRateLimitError, PerplexityAuthError,
+    AnthropicRateLimitError, AnthropicAuthError,
+)
+
+
+class AccountErrorSignal:
+    """Thread-safe flag for propagating account-level errors across workers."""
+
+    def __init__(self):
+        self._error: Optional[Exception] = None
+        self._lock = threading.Lock()
+
+    def set(self, error: Exception):
+        with self._lock:
+            if self._error is None:
+                self._error = error
+
+    @property
+    def is_set(self) -> bool:
+        return self._error is not None
+
+    @property
+    def error(self) -> Optional[Exception]:
+        return self._error
 
 
 class SuburbCandidate:
@@ -131,7 +161,7 @@ Begin your response with the opening square bracket [
     try:
         response = client.call_deep_research(
             prompt=prompt,
-            timeout=180  # 3 minutes for discovery
+            timeout=settings.DISCOVERY_TIMEOUT
         )
 
         # Parse JSON response
@@ -176,6 +206,139 @@ Begin your response with the opening square bracket [
     except Exception as e:
         print(f"Error during suburb discovery: {e}")
         raise
+
+
+def _discover_for_single_region(
+    user_input: UserInput,
+    region: str,
+    max_results: Optional[int],
+    account_error: AccountErrorSignal,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> list[SuburbCandidate]:
+    """
+    Discover suburbs for a single region. Designed to run in a thread.
+
+    Checks account_error before starting — returns [] if another thread
+    hit an auth/rate-limit error.
+    """
+    if account_error.is_set:
+        return []
+
+    region_input = user_input.model_copy(update={"regions": [region]})
+
+    try:
+        candidates = discover_suburbs(region_input, max_results=max_results)
+        if progress_callback:
+            progress_callback(f"Discovered {len(candidates)} suburbs in {region}")
+        return candidates
+    except API_ACCOUNT_ERRORS as e:
+        account_error.set(e)
+        raise
+    except Exception as e:
+        logger.warning("Discovery failed for region %s: %s", region, e)
+        if progress_callback:
+            progress_callback(f"Discovery failed for {region}: {e}")
+        return []
+
+
+def parallel_discover_suburbs(
+    user_input: UserInput,
+    max_results: Optional[int] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> list[SuburbCandidate]:
+    """
+    Discover suburbs across multiple regions in parallel.
+
+    For single-region requests, delegates directly to discover_suburbs()
+    (no threading overhead). For multi-region or "All Australia", splits
+    into per-region parallel calls.
+
+    Returns deduplicated, price-filtered candidates merged from all regions.
+    """
+    regions = user_input.regions
+
+    # Determine which regions to query
+    if "All Australia" in regions:
+        query_regions = list(regions_data.AUSTRALIAN_STATES)
+    else:
+        query_regions = list(regions)
+
+    # Single region — no parallelism needed
+    if len(query_regions) == 1:
+        return discover_suburbs(user_input, max_results=max_results)
+
+    # Multi-region — parallel discovery
+    account_error = AccountErrorSignal()
+    all_candidates: list[SuburbCandidate] = []
+    max_workers = min(len(query_regions), settings.DISCOVERY_MAX_WORKERS)
+    total_regions = len(query_regions)
+    completed_count = 0
+
+    if progress_callback:
+        progress_callback(
+            f"Discovering suburbs across {total_regions} regions "
+            f"({max_workers} parallel workers)..."
+        )
+
+    print(f"\nParallel discovery: {total_regions} regions, {max_workers} workers")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_region = {}
+        for region in query_regions:
+            future = executor.submit(
+                _discover_for_single_region,
+                user_input, region, max_results,
+                account_error, progress_callback,
+            )
+            future_to_region[future] = region
+
+        for future in as_completed(future_to_region):
+            region = future_to_region[future]
+            completed_count += 1
+
+            try:
+                candidates = future.result()
+                all_candidates.extend(candidates)
+                print(f"   Region {completed_count}/{total_regions}: {region} ({len(candidates)} suburbs)")
+            except API_ACCOUNT_ERRORS:
+                # Account error — cancel remaining futures
+                for f in future_to_region:
+                    f.cancel()
+                raise account_error.error
+            except Exception as e:
+                logger.warning("Region %s failed: %s", region, e)
+                print(f"   Region {completed_count}/{total_regions}: {region} (FAILED: {e})")
+
+    # Deduplicate by (name, state)
+    seen: set[tuple[str, str]] = set()
+    deduped: list[SuburbCandidate] = []
+    for c in all_candidates:
+        key = (c.name.lower().strip(), c.state.upper().strip())
+        if key not in seen:
+            seen.add(key)
+            deduped.append(c)
+
+    # Price filter
+    pre_filter = len(deduped)
+    deduped = [
+        c for c in deduped
+        if c.median_price > 0 and c.median_price <= user_input.max_median_price
+    ]
+    if pre_filter != len(deduped):
+        print(f"   Price filter: {pre_filter} -> {len(deduped)} candidates ({pre_filter - len(deduped)} removed)")
+
+    if max_results and len(deduped) > max_results:
+        deduped = deduped[:max_results]
+
+    print(f"✓ Parallel discovery complete: {len(deduped)} unique suburbs from {total_regions} regions")
+
+    if progress_callback:
+        progress_callback(
+            f"Discovery complete: {len(deduped)} unique suburbs "
+            f"from {total_regions} regions"
+        )
+
+    return deduped
 
 
 def get_discovery_summary(candidates: list[SuburbCandidate]) -> str:

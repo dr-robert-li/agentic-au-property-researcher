@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -49,6 +50,7 @@ class ResearchCache:
 
     def __init__(self, config: CacheConfig):
         self.config = config
+        self._lock = threading.RLock()
         self._ensure_dir()
 
     def _ensure_dir(self):
@@ -122,33 +124,34 @@ class ResearchCache:
         if not self.config.enabled:
             return None
 
-        key_hash = self._make_key(cache_type, **key_parts)
-        index = self._load_index()
+        with self._lock:
+            key_hash = self._make_key(cache_type, **key_parts)
+            index = self._load_index()
 
-        entry = index.get(key_hash)
-        if entry is None:
-            return None
+            entry = index.get(key_hash)
+            if entry is None:
+                return None
 
-        if self._is_expired(entry):
-            # Clean up expired entry
-            self._remove_entry(key_hash, entry, index)
-            return None
+            if self._is_expired(entry):
+                # Clean up expired entry
+                self._remove_entry(key_hash, entry, index)
+                return None
 
-        # Read cached data file
-        data_path = self.config.cache_dir / entry.filepath
-        if not data_path.exists():
-            # Data file missing, clean up index
-            del index[key_hash]
-            self._save_index(index)
-            return None
+            # Read cached data file
+            data_path = self.config.cache_dir / entry.filepath
+            if not data_path.exists():
+                # Data file missing, clean up index
+                del index[key_hash]
+                self._save_index(index)
+                return None
 
-        try:
-            with open(data_path, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("Failed to read cache file %s: %s", data_path, e)
-            self._remove_entry(key_hash, entry, index)
-            return None
+            try:
+                with open(data_path, "r") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("Failed to read cache file %s: %s", data_path, e)
+                self._remove_entry(key_hash, entry, index)
+                return None
 
     def put(self, cache_type: str, data: dict, **key_parts):
         """
@@ -162,27 +165,28 @@ class ResearchCache:
         if not self.config.enabled:
             return
 
-        key_hash = self._make_key(cache_type, **key_parts)
-        filename = f"{cache_type}_{key_hash}.json"
-        data_path = self.config.cache_dir / filename
+        with self._lock:
+            key_hash = self._make_key(cache_type, **key_parts)
+            filename = f"{cache_type}_{key_hash}.json"
+            data_path = self.config.cache_dir / filename
 
-        # Write data file
-        with open(data_path, "w") as f:
-            json.dump(data, f, indent=2)
+            # Write data file
+            with open(data_path, "w") as f:
+                json.dump(data, f, indent=2)
 
-        # Update index
-        entry = CacheEntry(
-            key_hash=key_hash,
-            filepath=filename,
-            created_at=time.time(),
-            ttl_seconds=self._get_ttl(cache_type),
-            cache_type=cache_type,
-            key_parts=key_parts,
-        )
+            # Update index
+            entry = CacheEntry(
+                key_hash=key_hash,
+                filepath=filename,
+                created_at=time.time(),
+                ttl_seconds=self._get_ttl(cache_type),
+                cache_type=cache_type,
+                key_parts=key_parts,
+            )
 
-        index = self._load_index()
-        index[key_hash] = entry
-        self._save_index(index)
+            index = self._load_index()
+            index[key_hash] = entry
+            self._save_index(index)
 
     def invalidate(self, cache_type: str, **key_parts) -> bool:
         """
@@ -191,15 +195,16 @@ class ResearchCache:
         Returns:
             True if entry was found and removed, False otherwise
         """
-        key_hash = self._make_key(cache_type, **key_parts)
-        index = self._load_index()
+        with self._lock:
+            key_hash = self._make_key(cache_type, **key_parts)
+            index = self._load_index()
 
-        entry = index.get(key_hash)
-        if entry is None:
-            return False
+            entry = index.get(key_hash)
+            if entry is None:
+                return False
 
-        self._remove_entry(key_hash, entry, index)
-        return True
+            self._remove_entry(key_hash, entry, index)
+            return True
 
     def clear(self, cache_type: Optional[str] = None) -> int:
         """
@@ -212,23 +217,24 @@ class ResearchCache:
         Returns:
             Number of entries cleared
         """
-        index = self._load_index()
-        count = 0
+        with self._lock:
+            index = self._load_index()
+            count = 0
 
-        keys_to_remove = []
-        for key_hash, entry in index.items():
-            if cache_type is None or entry.cache_type == cache_type:
-                keys_to_remove.append((key_hash, entry))
+            keys_to_remove = []
+            for key_hash, entry in index.items():
+                if cache_type is None or entry.cache_type == cache_type:
+                    keys_to_remove.append((key_hash, entry))
 
-        for key_hash, entry in keys_to_remove:
-            data_path = self.config.cache_dir / entry.filepath
-            if data_path.exists():
-                data_path.unlink()
-            del index[key_hash]
-            count += 1
+            for key_hash, entry in keys_to_remove:
+                data_path = self.config.cache_dir / entry.filepath
+                if data_path.exists():
+                    data_path.unlink()
+                del index[key_hash]
+                count += 1
 
-        self._save_index(index)
-        return count
+            self._save_index(index)
+            return count
 
     def stats(self) -> dict:
         """
@@ -238,43 +244,44 @@ class ResearchCache:
             Dict with discovery_count, research_count, total_size_bytes,
             expired_count, oldest_timestamp, newest_timestamp
         """
-        index = self._load_index()
+        with self._lock:
+            index = self._load_index()
 
-        discovery_count = 0
-        research_count = 0
-        expired_count = 0
-        total_size = 0
-        oldest = None
-        newest = None
+            discovery_count = 0
+            research_count = 0
+            expired_count = 0
+            total_size = 0
+            oldest = None
+            newest = None
 
-        for entry in index.values():
-            if entry.cache_type == "discovery":
-                discovery_count += 1
-            else:
-                research_count += 1
+            for entry in index.values():
+                if entry.cache_type == "discovery":
+                    discovery_count += 1
+                else:
+                    research_count += 1
 
-            if self._is_expired(entry):
-                expired_count += 1
+                if self._is_expired(entry):
+                    expired_count += 1
 
-            data_path = self.config.cache_dir / entry.filepath
-            if data_path.exists():
-                total_size += data_path.stat().st_size
+                data_path = self.config.cache_dir / entry.filepath
+                if data_path.exists():
+                    total_size += data_path.stat().st_size
 
-            if oldest is None or entry.created_at < oldest:
-                oldest = entry.created_at
-            if newest is None or entry.created_at > newest:
-                newest = entry.created_at
+                if oldest is None or entry.created_at < oldest:
+                    oldest = entry.created_at
+                if newest is None or entry.created_at > newest:
+                    newest = entry.created_at
 
-        return {
-            "discovery_count": discovery_count,
-            "research_count": research_count,
-            "total_entries": discovery_count + research_count,
-            "expired_count": expired_count,
-            "total_size_bytes": total_size,
-            "oldest_timestamp": oldest,
-            "newest_timestamp": newest,
-            "enabled": self.config.enabled,
-        }
+            return {
+                "discovery_count": discovery_count,
+                "research_count": research_count,
+                "total_entries": discovery_count + research_count,
+                "expired_count": expired_count,
+                "total_size_bytes": total_size,
+                "oldest_timestamp": oldest,
+                "newest_timestamp": newest,
+                "enabled": self.config.enabled,
+            }
 
     def _remove_entry(self, key_hash: str, entry: CacheEntry, index: dict):
         """Remove a cache entry and its data file."""

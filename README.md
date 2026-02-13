@@ -1,12 +1,12 @@
 # Agentic Australian Property Researcher 🏘️
 
-[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
+[![Version](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 **Author:** Dr. Robert Li
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 
 ---
 
@@ -75,6 +75,12 @@ AI-powered property investment researcher that generates comprehensive suburb-le
   - Run configuration comparison table
   - Available from web UI (runs list + dedicated comparison page) and CLI (`--compare` flag)
   - Generates standalone comparison HTML reports
+- **Parallel Execution Pipeline**:
+  - Multi-region discovery runs concurrently (configurable workers, default 4)
+  - Per-suburb research runs in parallel (configurable workers, default 3)
+  - "All Australia" queries automatically split into 8 per-state parallel calls
+  - Results deduplicated and merged across regions; partial failures preserve successful results
+  - Thread-safe cache prevents index corruption under concurrent access
 - **Pipeline Resilience**:
   - Transient API errors (timeouts, server errors) skip the suburb and continue with remaining suburbs using fallback metrics
   - Only account-level errors (auth failures, rate limits) stop the batch
@@ -388,6 +394,12 @@ DEFAULT_PORT=8080
 CACHE_ENABLED=true              # Enable/disable research cache (default: true)
 CACHE_DISCOVERY_TTL=86400       # Discovery cache TTL in seconds (default: 24 hours)
 CACHE_RESEARCH_TTL=604800       # Research cache TTL in seconds (default: 7 days)
+
+# Parallel Execution Settings
+DISCOVERY_MAX_WORKERS=4         # Max parallel region discovery workers (default: 4)
+RESEARCH_MAX_WORKERS=3          # Max parallel suburb research workers (default: 3)
+DISCOVERY_TIMEOUT=120           # Timeout per region discovery call in seconds (default: 120)
+RESEARCH_TIMEOUT=240            # Timeout per suburb research call in seconds (default: 240)
 ```
 
 At least one API key is required. If both are provided, the provider toggle becomes available in all interfaces.

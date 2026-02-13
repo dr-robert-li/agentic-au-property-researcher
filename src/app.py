@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import settings
 from models.inputs import UserInput
 from models.run_result import RunResult
-from research.suburb_discovery import discover_suburbs, get_discovery_summary
-from research.suburb_research import batch_research_suburbs
+from research.suburb_discovery import discover_suburbs, parallel_discover_suburbs, get_discovery_summary
+from research.suburb_research import batch_research_suburbs, parallel_research_suburbs
 from research.ranking import rank_suburbs, get_ranking_summary
 from reporting.html_renderer import generate_all_reports, copy_static_assets
 from research.perplexity_client import (
@@ -76,7 +76,11 @@ def run_research_pipeline(
         print("\n📍 STEP 1: SUBURB DISCOVERY")
         print("-" * 80)
         _progress(f"Discovering suburbs matching criteria (targeting {user_input.num_suburbs} suburbs)...")
-        candidates = discover_suburbs(user_input, max_results=user_input.num_suburbs * 5)
+        candidates = parallel_discover_suburbs(
+            user_input,
+            max_results=user_input.num_suburbs * 5,
+            progress_callback=progress_callback,
+        )
 
         if not candidates:
             _progress("No suburbs found matching criteria")
@@ -92,13 +96,13 @@ def run_research_pipeline(
         print("-" * 80)
         research_count = min(len(candidates), user_input.num_suburbs * 3)
         _progress(f"Starting detailed research on {research_count} suburbs (to select top {user_input.num_suburbs})...")
-        metrics_list = batch_research_suburbs(
+        metrics_list = parallel_research_suburbs(
             candidates,
             user_input.dwelling_type,
             user_input.max_median_price,
             max_suburbs=research_count,
             provider=user_input.provider,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
         )
 
         if not metrics_list:

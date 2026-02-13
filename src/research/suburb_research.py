@@ -3,8 +3,11 @@ Per-suburb detailed research functionality using deep research.
 """
 import json
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Callable
 
+from config import settings
 from research.cache import get_cache
 
 logger = logging.getLogger(__name__)
@@ -183,7 +186,7 @@ Begin your response with the opening brace {{
         # Make the API call with extended timeout for deep research
         response = client.call_deep_research(
             prompt=prompt,
-            timeout=240  # 4 minutes for detailed research
+            timeout=settings.RESEARCH_TIMEOUT
         )
 
         # Parse JSON response
@@ -425,3 +428,135 @@ def batch_research_suburbs(
 
     print(f"\n✓ Batch research complete: {len(results)}/{total} suburbs")
     return results
+
+
+def parallel_research_suburbs(
+    candidates: list[SuburbCandidate],
+    dwelling_type: str,
+    max_price: float,
+    max_suburbs: Optional[int] = None,
+    provider: str = "perplexity",
+    progress_callback: Optional[Callable[[str], None]] = None,
+    max_workers: Optional[int] = None,
+) -> list[SuburbMetrics]:
+    """
+    Research multiple suburbs in parallel using a thread pool.
+
+    Preserves partial results: if some suburbs fail, the successfully
+    researched ones are still returned. Account-level errors (auth,
+    rate limit) stop all workers but return partial results.
+
+    Args:
+        candidates: List of SuburbCandidate objects
+        dwelling_type: Type of dwelling
+        max_price: Maximum median price
+        max_suburbs: Maximum number to research (None = all)
+        provider: Research provider ("perplexity" or "anthropic")
+        progress_callback: Optional callback for progress updates
+        max_workers: Max concurrent research workers (default from settings)
+
+    Returns:
+        List of SuburbMetrics in the same order as candidates (where available)
+    """
+    if max_suburbs:
+        candidates = candidates[:max_suburbs]
+
+    if not candidates:
+        return []
+
+    if max_workers is None:
+        max_workers = settings.RESEARCH_MAX_WORKERS
+
+    total = len(candidates)
+
+    # Use AccountErrorSignal from suburb_discovery
+    from research.suburb_discovery import AccountErrorSignal
+    account_error = AccountErrorSignal()
+
+    # Results dict keyed by index to preserve ordering
+    results_by_index: dict[int, SuburbMetrics] = {}
+    results_lock = threading.Lock()
+    completed_count = 0
+    completed_lock = threading.Lock()
+
+    print(f"\nResearching {total} suburbs in parallel ({max_workers} workers)...")
+    print("=" * 60)
+
+    if progress_callback:
+        progress_callback(
+            f"Starting parallel research: {total} suburbs, "
+            f"{max_workers} workers"
+        )
+
+    def _research_one(index: int, candidate: SuburbCandidate) -> tuple[int, SuburbMetrics]:
+        """Research a single suburb in a thread pool worker."""
+        nonlocal completed_count
+
+        if account_error.is_set:
+            return (index, _create_fallback_metrics(candidate))
+
+        try:
+            metrics = research_suburb(candidate, dwelling_type, max_price, provider)
+            return (index, metrics)
+        except API_ACCOUNT_ERRORS as e:
+            account_error.set(e)
+            raise
+        except API_TRANSIENT_ERRORS as e:
+            logger.warning("Transient error for %s: %s", candidate.name, e)
+            if progress_callback:
+                progress_callback(f"API error for {candidate.name}, using fallback data")
+            return (index, _create_fallback_metrics(candidate))
+        except Exception as e:
+            logger.warning("Error researching %s: %s", candidate.name, e)
+            if progress_callback:
+                progress_callback(f"Error researching {candidate.name}, using fallback data")
+            return (index, _create_fallback_metrics(candidate))
+        finally:
+            with completed_lock:
+                completed_count += 1
+                cnt = completed_count
+            if progress_callback:
+                progress_callback(f"Research progress: {cnt}/{total} complete")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_info = {}
+        for i, candidate in enumerate(candidates):
+            future = executor.submit(_research_one, i, candidate)
+            future_to_info[future] = (i, candidate)
+
+        for future in as_completed(future_to_info):
+            i, candidate = future_to_info[future]
+            try:
+                idx, metrics = future.result()
+                with results_lock:
+                    results_by_index[idx] = metrics
+            except API_ACCOUNT_ERRORS:
+                # Cancel remaining futures
+                for f in future_to_info:
+                    f.cancel()
+                # Preserve partial results collected so far
+                break
+            except Exception as e:
+                logger.warning("Unexpected error for %s: %s", candidate.name, e)
+                with results_lock:
+                    results_by_index[i] = _create_fallback_metrics(candidate)
+
+    # Build ordered results list
+    ordered_results = []
+    for i in range(total):
+        if i in results_by_index:
+            ordered_results.append(results_by_index[i])
+
+    print(f"\n{'='*60}")
+    print(f"Parallel research complete: {len(ordered_results)}/{total} suburbs")
+    if account_error.is_set:
+        print(f"Stopped early due to account error: {type(account_error.error).__name__}")
+        print(f"Partial results preserved: {len(ordered_results)} suburbs")
+    print(f"{'='*60}")
+
+    if progress_callback:
+        progress_callback(
+            f"Research complete: {len(ordered_results)}/{total} suburbs"
+        )
+
+    return ordered_results

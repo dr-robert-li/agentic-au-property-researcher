@@ -52,6 +52,12 @@ API_TIMEOUT = 300  # 5 minutes for deep research calls
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 
+# Parallel execution settings
+DISCOVERY_MAX_WORKERS = int(os.getenv("DISCOVERY_MAX_WORKERS", "4"))
+RESEARCH_MAX_WORKERS = int(os.getenv("RESEARCH_MAX_WORKERS", "3"))
+DISCOVERY_TIMEOUT = int(os.getenv("DISCOVERY_TIMEOUT", "120"))   # 2 min per region
+RESEARCH_TIMEOUT = int(os.getenv("RESEARCH_TIMEOUT", "240"))     # 4 min per suburb
+
 # Cache Configuration
 CACHE_DIR = BASE_DIR / "cache"
 CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
