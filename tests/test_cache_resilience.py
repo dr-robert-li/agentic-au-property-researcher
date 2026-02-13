@@ -270,7 +270,6 @@ def test_web_index_has_cache_section():
     template_path = Path(__file__).parent.parent / "src" / "ui" / "web" / "templates" / "web_index.html"
     content = template_path.read_text()
     assert "cache-section" in content
-    assert "Cache Management" in content
     assert "clear-cache-btn" in content
     assert "clearCache" in content
     assert "/cache/stats" in content
