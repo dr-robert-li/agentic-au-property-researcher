@@ -75,7 +75,7 @@ def run_research_pipeline(
         # Step 1: Discover suburbs
         print("\n📍 STEP 1: SUBURB DISCOVERY")
         print("-" * 80)
-        _progress("Discovering suburbs matching criteria...")
+        _progress(f"Discovering suburbs matching criteria (targeting {user_input.num_suburbs} suburbs)...")
         candidates = discover_suburbs(user_input, max_results=user_input.num_suburbs * 5)
 
         if not candidates:
@@ -84,14 +84,14 @@ def run_research_pipeline(
             run_result.error_message = "No qualifying suburbs found"
             return run_result
 
-        _progress(f"Found {len(candidates)} qualifying suburbs")
+        _progress(f"Found {len(candidates)} qualifying suburb candidates (need {user_input.num_suburbs})")
         print("\n" + get_discovery_summary(candidates))
 
         # Step 2: Detailed research
         print("\n🔬 STEP 2: DETAILED RESEARCH")
         print("-" * 80)
         research_count = min(len(candidates), user_input.num_suburbs * 3)
-        _progress(f"Starting detailed research on {research_count} suburbs...")
+        _progress(f"Starting detailed research on {research_count} suburbs (to select top {user_input.num_suburbs})...")
         metrics_list = batch_research_suburbs(
             candidates,
             user_input.dwelling_type,

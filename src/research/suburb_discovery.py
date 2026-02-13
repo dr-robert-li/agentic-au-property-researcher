@@ -62,7 +62,8 @@ IMPORTANT INSTRUCTIONS:
 1. Use web_search to find current, accurate property price data
 2. Focus on suburbs with growth potential and good investment characteristics
 3. Include a variety of suburbs across different areas within the selected regions
-4. Aim to find at least {user_input.num_suburbs * 3} qualifying suburbs to allow for ranking
+4. You MUST find at least {user_input.num_suburbs * 3} qualifying suburbs (the user wants {user_input.num_suburbs} final suburbs, so we need extra candidates for ranking and filtering)
+5. If you cannot find {user_input.num_suburbs * 3} suburbs, find as many as possible but aim for the target
 
 OUTPUT FORMAT:
 Return ONLY valid JSON array with NO additional text or commentary. Format:
@@ -97,10 +98,14 @@ Begin your response with the opening square bracket [
     cache = get_cache()
     price_bucket = ResearchCache.bucket_price(user_input.max_median_price)
     sorted_regions = ",".join(sorted(user_input.regions))
+    # Bucket the target count so similar requests share cache (e.g., 3->10, 5->10, 10->10, 15->20)
+    target_count = user_input.num_suburbs * 3
+    count_bucket = max(10, ((target_count + 9) // 10) * 10)  # round up to nearest 10, min 10
     cache_key_parts = dict(
         price_bucket=str(price_bucket),
         dwelling_type=user_input.dwelling_type,
         regions=sorted_regions,
+        min_count=str(count_bucket),
     )
 
     cached = cache.get("discovery", **cache_key_parts)

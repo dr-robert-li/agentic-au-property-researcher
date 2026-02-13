@@ -4,6 +4,7 @@ FastAPI web server for Australian Property Research application.
 Provides a browser-based interface for running property research.
 """
 import sys
+import copy
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
@@ -11,7 +12,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, Request, Form, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -250,11 +251,17 @@ async def run_status(request: Request, run_id: str):
 async def api_run_status(run_id: str):
     """API endpoint for run status (for AJAX polling)."""
     if run_id in active_runs:
-        return active_runs[run_id]
+        # Return a snapshot copy to avoid thread-safety issues
+        data = copy.deepcopy(active_runs[run_id])
     elif run_id in completed_runs:
-        return completed_runs[run_id]
+        data = completed_runs[run_id]
     else:
-        return {"error": "Run not found"}
+        data = {"error": "Run not found"}
+
+    return JSONResponse(
+        content=data,
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+    )
 
 
 @app.get("/runs", response_class=HTMLResponse)
