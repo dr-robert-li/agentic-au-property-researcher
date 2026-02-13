@@ -1,28 +1,28 @@
 # Agentic Australian Property Researcher 🏘️
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 **Author:** Dr. Robert Li
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ---
 
-AI-powered property investment researcher that generates comprehensive suburb-level analysis reports for Australian real estate markets. Uses Perplexity's deep research capabilities with Claude Sonnet 4.5 to analyze market trends, infrastructure development, demographics, and growth potential.
+AI-powered property investment researcher that generates comprehensive suburb-level analysis reports for Australian real estate markets. Supports dual AI providers: **Perplexity** (deep research with live web search) and **Anthropic Claude** (claude-sonnet-4-5), with the ability to toggle between them when both API keys are configured.
 
 ## ⚠️ Important Warnings
 
 ### API Usage and Costs
-- **This application consumes significant API credits**: Each suburb research uses Perplexity's deep-research preset, which is resource-intensive
+- **This application consumes significant API credits**: Each suburb research uses deep-research API calls (Perplexity or Anthropic), which are resource-intensive
 - **Token consumption**: A typical run analyzing 5-10 suburbs can consume tens of thousands of API tokens
 - **Processing time**: Research takes 2-5 minutes per suburb; a 10-suburb analysis can take 20-50 minutes
-- **Rate limiting**: Perplexity API has rate limits; large runs may encounter delays or failures
+- **Rate limiting**: Both Perplexity and Anthropic APIs have rate limits; large runs may encounter delays or failures
 
 ### Recommendations
 - Start with small runs (2-3 suburbs) to test
-- Monitor your Perplexity API credit balance
+- Monitor your API credit balance (Perplexity and/or Anthropic)
 - Use the quick demo (`python demo.py`) for initial testing
 - Consider API costs before running large analyses (>10 suburbs)
 
@@ -40,7 +40,8 @@ AI-powered property investment researcher that generates comprehensive suburb-le
 
 - **Australia-Wide Coverage**: Research suburbs across all Australian states and territories
 - **Multi-Region Filtering**: Target specific regions (e.g., South East Queensland, Northern NSW) or entire states
-- **Deep Research**: Powered by Perplexity's agentic research with Claude Sonnet 4.5
+- **Dual AI Provider Support**: Toggle between Perplexity (deep research + live web search) and Anthropic Claude (claude-sonnet-4-5)
+- **Deep Research**: Powered by Perplexity's agentic research or Anthropic Claude's reasoning capabilities
 - **Comprehensive Data Collection**:
   - Current & historical market metrics (prices, DOM, clearance rates, turnover)
   - Demographics and population trends
@@ -65,7 +66,9 @@ AI-powered property investment researcher that generates comprehensive suburb-le
 ### Prerequisites
 
 - Python 3.10 or higher
-- Perplexity API key ([Get one here](https://www.perplexity.ai/))
+- At least one of the following API keys:
+  - Perplexity API key ([Get one here](https://www.perplexity.ai/))
+  - Anthropic API key ([Get one here](https://console.anthropic.com/))
 
 ### Setup
 
@@ -91,10 +94,16 @@ AI-powered property investment researcher that generates comprehensive suburb-le
    cp .env.example .env
    ```
 
-   Edit `.env` and add your Perplexity API key:
+   Edit `.env` and add your API key(s). At least one is required:
    ```
+   # Perplexity API (enables deep research with live web search)
    PERPLEXITY_API_KEY=pplx-your-api-key-here
+
+   # Anthropic API (enables Claude claude-sonnet-4-5 provider)
+   ANTHROPIC_API_KEY=sk-ant-your-api-key-here
    ```
+
+   If both keys are provided, you can toggle between providers in the UI or via `--provider` flag.
 
 ## Usage
 
@@ -166,6 +175,7 @@ python -m src.app \
 - `--dwelling-type`: Type of dwelling (`house`, `apartment`, `townhouse`) **[required]**
 - `--regions`: Region(s) to search (default: "South East Queensland")
 - `--num-suburbs`: Number of top suburbs to include in report (default: 5)
+- `--provider`: AI research provider (`perplexity` or `anthropic`; only available providers shown)
 - `--run-id`: Custom run ID (default: auto-generated timestamp)
 
 #### Examples
@@ -177,6 +187,14 @@ python -m src.app \
   --dwelling-type house \
   --regions "South East Queensland" \
   --num-suburbs 10
+```
+
+**Use Anthropic Claude as provider**:
+```bash
+python -m src.app \
+  --max-price 700000 \
+  --dwelling-type house \
+  --provider anthropic
 ```
 
 **Multiple regions**:
@@ -304,27 +322,34 @@ start runs/2026-02-01_10-30-15/index.html
 Configure in `.env` file:
 
 ```bash
-# Perplexity API Configuration
-PERPLEXITY_API_KEY=your-api-key-here
+# Perplexity API Configuration (enables Perplexity provider)
+PERPLEXITY_API_KEY=your-perplexity-api-key-here
+
+# Anthropic API Configuration (enables Claude provider)
+ANTHROPIC_API_KEY=your-anthropic-api-key-here
 
 # Optional Settings
 OUTPUT_DIR=runs
-REQUEST_TIMEOUT=180
-MAX_RETRIES=3
+DEFAULT_PORT=8080
 ```
+
+At least one API key is required. If both are provided, the provider toggle becomes available in all interfaces.
 
 ### Advanced Configuration
 
 Edit `src/config/settings.py` for advanced settings:
 - API timeouts and retry behavior
-- Default model and preset
+- Default model and preset per provider
 - Output directory structure
 - Chart styling and dimensions
 
 ## Performance Notes
 
 - **API Costs**: Each suburb requires deep research API calls (~2-5 minutes per suburb)
-- **Rate Limits**: Perplexity API rate limits may affect large runs
+- **Rate Limits**: Both Perplexity and Anthropic APIs have rate limits that may affect large runs
+- **Provider Differences**:
+  - **Perplexity**: Uses live web search for current data; generally more up-to-date market information
+  - **Anthropic Claude**: Uses training data only (no live web search); faster responses but data may be less current
 - **Recommended**: Start with 3-5 suburbs for testing
 - **Warning**: Runs with >25 suburbs will prompt for confirmation due to cost/time
 
@@ -334,22 +359,24 @@ Edit `src/config/settings.py` for advanced settings:
 src/
 ├── config/              # Settings and region definitions
 ├── models/              # Pydantic data models
-├── research/            # Perplexity integration and analysis
+├── research/            # AI provider integration and analysis
 ├── reporting/           # Chart generation and HTML rendering
-└── ui/                  # Templates and static assets
-    └── web/
-        ├── templates/   # Jinja2 HTML templates
-        └── static/      # CSS, JS, images
+└── ui/                  # User interfaces (web + CLI)
+    ├── web/
+    │   ├── templates/   # Jinja2 HTML templates
+    │   └── static/      # CSS, JS, images
+    └── cli/             # Interactive CLI interface
 ```
 
 ### Key Components
 
-1. **Perplexity Client** (`research/perplexity_client.py`): API wrapper with retry logic
-2. **Suburb Discovery** (`research/suburb_discovery.py`): Finds qualifying suburbs
-3. **Suburb Research** (`research/suburb_research.py`): Deep research per suburb
-4. **Ranking Engine** (`research/ranking.py`): Scores and ranks suburbs
-5. **Chart Generator** (`reporting/charts.py`): Creates visualizations
-6. **HTML Renderer** (`reporting/html_renderer.py`): Generates reports
+1. **Perplexity Client** (`research/perplexity_client.py`): Perplexity API wrapper with retry logic and client factory
+2. **Anthropic Client** (`research/anthropic_client.py`): Anthropic Claude API wrapper with matching interface
+3. **Suburb Discovery** (`research/suburb_discovery.py`): Finds qualifying suburbs via selected provider
+4. **Suburb Research** (`research/suburb_research.py`): Deep research per suburb with provider routing
+5. **Ranking Engine** (`research/ranking.py`): Scores and ranks suburbs
+6. **Chart Generator** (`reporting/charts.py`): Creates visualizations
+7. **HTML Renderer** (`reporting/html_renderer.py`): Generates reports
 
 ## Data Models
 
@@ -395,11 +422,11 @@ black src/
 
 ### Common Issues
 
-**API Key Not Found**:
+**No API Key Found**:
 ```
-Error: PERPLEXITY_API_KEY not set
+Error: At least one API key required
 ```
-Solution: Ensure `.env` file exists with valid API key.
+Solution: Ensure `.env` file exists with at least one valid API key (`PERPLEXITY_API_KEY` or `ANTHROPIC_API_KEY`).
 
 **Module Not Found**:
 ```
@@ -430,8 +457,9 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## Roadmap
 
-- [ ] FastAPI web interface
-- [ ] Interactive CLI with prompt_toolkit
+- [x] FastAPI web interface
+- [x] Interactive CLI with prompt_toolkit
+- [x] Dual AI provider support (Perplexity + Anthropic Claude)
 - [ ] Export to PDF/Excel
 - [ ] Historical data caching
 - [ ] Comparison mode for multiple runs
@@ -440,9 +468,9 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## Acknowledgments
 
-- **Perplexity AI**: Deep research API with web search capabilities
-- **Anthropic**: Claude Sonnet 4.5 for advanced reasoning
-- **Libraries**: Pydantic, Jinja2, Matplotlib, Seaborn
+- **Perplexity AI**: Deep research API with live web search capabilities
+- **Anthropic**: Claude Sonnet 4.5 for advanced reasoning (now a direct provider option)
+- **Libraries**: Pydantic, Jinja2, Matplotlib, Seaborn, FastAPI, prompt_toolkit, rich
 
 ## Disclaimer
 

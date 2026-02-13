@@ -1,5 +1,5 @@
 """
-Per-suburb detailed research functionality using Perplexity deep research.
+Per-suburb detailed research functionality using deep research.
 """
 import json
 from typing import Optional
@@ -19,20 +19,31 @@ from research.suburb_discovery import SuburbCandidate
 from research.perplexity_client import (
     get_client, PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
 )
+from research.anthropic_client import (
+    AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError
+)
+
+# Combined API error types for catching across providers
+API_FATAL_ERRORS = (
+    PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError,
+    AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError,
+)
 
 
 def research_suburb(
     candidate: SuburbCandidate,
     dwelling_type: str,
-    max_price: float
+    max_price: float,
+    provider: str = "perplexity"
 ) -> SuburbMetrics:
     """
-    Perform exhaustive research on a single suburb using Perplexity deep research.
+    Perform exhaustive research on a single suburb.
 
     Args:
         candidate: SuburbCandidate from discovery phase
         dwelling_type: Type of dwelling (house, apartment, townhouse)
         max_price: Maximum median price threshold
+        provider: Research provider ("perplexity" or "anthropic")
 
     Returns:
         Complete SuburbMetrics object with all available data
@@ -40,7 +51,7 @@ def research_suburb(
     Raises:
         Exception: If API call fails or response cannot be parsed
     """
-    client = get_client()
+    client = get_client(provider)
 
     # Build the detailed research prompt
     prompt = f"""
@@ -159,7 +170,7 @@ Begin your response with the opening brace {{
         print(f"✓ Research complete for {candidate.name}")
         return metrics
 
-    except (PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError) as e:
+    except API_FATAL_ERRORS as e:
         # Re-raise API errors immediately - don't waste credits on fallback attempts
         print(f"❌ API error for {candidate.name}")
         raise
@@ -269,7 +280,8 @@ def batch_research_suburbs(
     candidates: list[SuburbCandidate],
     dwelling_type: str,
     max_price: float,
-    max_suburbs: Optional[int] = None
+    max_suburbs: Optional[int] = None,
+    provider: str = "perplexity"
 ) -> list[SuburbMetrics]:
     """
     Research multiple suburbs in batch.
@@ -279,6 +291,7 @@ def batch_research_suburbs(
         dwelling_type: Type of dwelling
         max_price: Maximum median price
         max_suburbs: Maximum number to research (None = all)
+        provider: Research provider ("perplexity" or "anthropic")
 
     Returns:
         List of SuburbMetrics objects
@@ -295,9 +308,9 @@ def batch_research_suburbs(
     for i, candidate in enumerate(candidates, 1):
         print(f"\n[{i}/{total}] {candidate.name}, {candidate.state}")
         try:
-            metrics = research_suburb(candidate, dwelling_type, max_price)
+            metrics = research_suburb(candidate, dwelling_type, max_price, provider)
             results.append(metrics)
-        except (PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError) as e:
+        except API_FATAL_ERRORS as e:
             # Stop immediately on API errors - don't waste credits
             print(f"\n{'='*60}")
             print(f"❌ STOPPING: API error encountered")

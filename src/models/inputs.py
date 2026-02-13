@@ -2,7 +2,7 @@
 User input data models.
 """
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -13,6 +13,7 @@ class UserInput(BaseModel):
     dwelling_type: Literal["house", "apartment", "townhouse"] = Field(..., description="Type of dwelling")
     regions: list[str] = Field(default=["All Australia"], description="List of regions/states to search")
     num_suburbs: int = Field(default=10, gt=0, le=100, description="Number of top suburbs to include in report")
+    provider: Literal["perplexity", "anthropic"] = Field(default="perplexity", description="AI research provider")
     interface_mode: Literal["gui", "cli"] = Field(default="gui", description="Interface mode used")
     run_id: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), description="Unique run identifier")
 
@@ -41,6 +42,12 @@ class UserInput(BaseModel):
             return self.regions[0]
         return f"{len(self.regions)} regions ({', '.join(self.regions[:3])}{'...' if len(self.regions) > 3 else ''})"
 
+    def get_provider_display(self) -> str:
+        """Get human-readable provider name."""
+        if self.provider == "perplexity":
+            return "Perplexity (Deep Research + Web Search)"
+        return "Anthropic Claude (claude-sonnet-4-5)"
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -48,6 +55,7 @@ class UserInput(BaseModel):
                 "dwelling_type": "house",
                 "regions": ["South East Queensland", "Northern NSW"],
                 "num_suburbs": 10,
+                "provider": "perplexity",
                 "interface_mode": "gui"
             }
         }

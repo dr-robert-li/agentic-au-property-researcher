@@ -10,12 +10,29 @@ load_dotenv()
 
 # API Configuration
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
-if not PERPLEXITY_API_KEY:
-    raise ValueError("PERPLEXITY_API_KEY must be set in .env file")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+# At least one API key must be set
+if not PERPLEXITY_API_KEY and not ANTHROPIC_API_KEY:
+    raise ValueError(
+        "At least one API key must be set in .env file: "
+        "PERPLEXITY_API_KEY or ANTHROPIC_API_KEY"
+    )
+
+# Determine available providers
+AVAILABLE_PROVIDERS = []
+if PERPLEXITY_API_KEY:
+    AVAILABLE_PROVIDERS.append("perplexity")
+if ANTHROPIC_API_KEY:
+    AVAILABLE_PROVIDERS.append("anthropic")
+
+# Default provider: prefer perplexity if available, otherwise anthropic
+DEFAULT_PROVIDER = AVAILABLE_PROVIDERS[0]
 
 # Model Configuration
-DEFAULT_MODEL = "anthropic/claude-sonnet-4-5"
-DEFAULT_PRESET = "deep-research"
+DEFAULT_PERPLEXITY_MODEL = "anthropic/claude-sonnet-4-5"
+DEFAULT_PERPLEXITY_PRESET = "deep-research"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
 
 # Application Configuration
 BASE_DIR = Path(__file__).resolve().parent.parent.parent

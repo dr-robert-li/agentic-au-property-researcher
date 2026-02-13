@@ -1,5 +1,5 @@
 """
-Suburb discovery functionality using Perplexity deep research.
+Suburb discovery functionality using deep research.
 """
 import json
 from typing import Optional
@@ -31,7 +31,7 @@ def discover_suburbs(
     max_results: Optional[int] = None
 ) -> list[SuburbCandidate]:
     """
-    Discover suburbs matching the user criteria using Perplexity deep research.
+    Discover suburbs matching the user criteria using deep research.
 
     Args:
         user_input: User input specifying search criteria
@@ -43,7 +43,7 @@ def discover_suburbs(
     Raises:
         Exception: If API call fails or response cannot be parsed
     """
-    client = get_client()
+    client = get_client(user_input.provider)
 
     # Build region filter description
     region_desc = regions_data.build_region_filter_description(user_input.regions)
@@ -85,7 +85,9 @@ CONSTRAINTS:
 Begin your response with the opening square bracket [
 """
 
+    provider_label = user_input.provider.title()
     print(f"Discovering suburbs {region_desc} under ${user_input.max_median_price:,.0f} for {user_input.dwelling_type}s...")
+    print(f"   Provider: {provider_label}")
 
     # Make the API call
     try:
@@ -110,7 +112,7 @@ Begin your response with the opening square bracket [
         else:
             raise Exception(f"Unexpected response format: {type(data)}")
 
-        # Filter by price (in case Perplexity included some above threshold)
+        # Filter by price (in case the API included some above threshold)
         candidates = [
             c for c in candidates
             if c.median_price > 0 and c.median_price <= user_input.max_median_price

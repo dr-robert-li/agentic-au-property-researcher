@@ -22,16 +22,26 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from models.inputs import UserInput
 from models.run_result import RunResult
 from app import run_research_pipeline
-from config import regions_data
+from config import settings, regions_data
 from research.perplexity_client import (
     PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
 )
+from research.anthropic_client import (
+    AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError
+)
+
+# Combined error tuples
+API_CREDIT_AUTH_ERRORS = (
+    PerplexityRateLimitError, PerplexityAuthError,
+    AnthropicRateLimitError, AnthropicAuthError,
+)
+API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
 
 # Initialize FastAPI app
 app = FastAPI(
     title="Australian Property Research",
     description="AI-powered property investment research for Australian real estate",
-    version="0.1.0"
+    version="1.1.0"
 )
 
 # Templates directory
@@ -98,13 +108,9 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
         if run_id in active_runs:
             del active_runs[run_id]
 
-    except (PerplexityRateLimitError, PerplexityAuthError) as e:
+    except API_CREDIT_AUTH_ERRORS as e:
         # Handle API credit/auth errors with specific messaging
-        error_msg = (
-            f"{str(e)}\n\n"
-            f"Please check your API credit balance at:\n"
-            f"https://www.perplexity.ai/account/api/billing"
-        )
+        error_msg = str(e)
         completed_runs[run_id] = {
             "run_id": run_id,
             "status": "failed",
@@ -119,13 +125,9 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
         if run_id in active_runs:
             del active_runs[run_id]
 
-    except PerplexityAPIError as e:
+    except API_GENERAL_ERRORS as e:
         # Handle general API errors
-        error_msg = (
-            f"Perplexity API Error: {str(e)}\n\n"
-            f"Check your API status and credits at:\n"
-            f"https://www.perplexity.ai/account/api/billing"
-        )
+        error_msg = f"API Error: {str(e)}"
         completed_runs[run_id] = {
             "run_id": run_id,
             "status": "failed",
@@ -165,7 +167,9 @@ async def home(request: Request):
         {
             "request": request,
             "regions": list(regions_data.REGIONS.keys()),
-            "dwelling_types": ["house", "apartment", "townhouse"]
+            "dwelling_types": ["house", "apartment", "townhouse"],
+            "providers": settings.AVAILABLE_PROVIDERS,
+            "default_provider": settings.DEFAULT_PROVIDER,
         }
     )
 
@@ -176,11 +180,16 @@ async def start_run(
     max_price: float = Form(...),
     dwelling_type: str = Form(...),
     regions: List[str] = Form(...),
-    num_suburbs: int = Form(5)
+    num_suburbs: int = Form(5),
+    provider: str = Form(None),
 ):
     """Start a new research run."""
     # Generate run ID
     run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    # Validate provider
+    if provider not in settings.AVAILABLE_PROVIDERS:
+        provider = settings.DEFAULT_PROVIDER
 
     # Create user input
     user_input = UserInput(
@@ -188,6 +197,7 @@ async def start_run(
         dwelling_type=dwelling_type,
         regions=regions,
         num_suburbs=num_suburbs,
+        provider=provider,
         run_id=run_id,
         interface_mode="gui"
     )
@@ -277,6 +287,8 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
+        "available_providers": settings.AVAILABLE_PROVIDERS,
+        "default_provider": settings.DEFAULT_PROVIDER,
         "active_runs": len(active_runs),
         "completed_runs": len(completed_runs)
     }

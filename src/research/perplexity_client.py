@@ -1,5 +1,6 @@
 """
 Perplexity API client wrapper with retry logic and error handling.
+Also provides factory function for getting the appropriate research client.
 """
 import json
 import time
@@ -246,13 +247,41 @@ class PerplexityClient:
         )
 
 
-# Global client instance
-_client: Optional[PerplexityClient] = None
+# Global client instances (one per provider)
+_clients: dict[str, Any] = {}
 
 
-def get_client() -> PerplexityClient:
-    """Get or create the global Perplexity client instance."""
-    global _client
-    if _client is None:
-        _client = PerplexityClient()
-    return _client
+def get_client(provider: Optional[str] = None):
+    """
+    Get or create the research client for the specified provider.
+
+    Args:
+        provider: "perplexity" or "anthropic". Defaults to settings.DEFAULT_PROVIDER.
+
+    Returns:
+        PerplexityClient or AnthropicClient instance
+
+    Raises:
+        ValueError: If the provider is not available (API key not set)
+    """
+    global _clients
+
+    if provider is None:
+        provider = settings.DEFAULT_PROVIDER
+
+    if provider not in settings.AVAILABLE_PROVIDERS:
+        available = ", ".join(settings.AVAILABLE_PROVIDERS)
+        raise ValueError(
+            f"Provider '{provider}' is not available. "
+            f"Set the appropriate API key in .env. "
+            f"Available providers: {available}"
+        )
+
+    if provider not in _clients:
+        if provider == "perplexity":
+            _clients[provider] = PerplexityClient()
+        elif provider == "anthropic":
+            from research.anthropic_client import AnthropicClient
+            _clients[provider] = AnthropicClient()
+
+    return _clients[provider]

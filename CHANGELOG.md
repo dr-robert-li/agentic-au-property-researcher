@@ -8,13 +8,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- FastAPI web interface with browser UI
-- Interactive CLI with prompt_toolkit
 - PDF/Excel export functionality
 - Historical data caching layer
 - Multi-run comparison mode
 - Email report delivery
 - RESTful API endpoints
+
+## [1.1.0] - 2026-02-13
+
+### Added
+- **Dual AI Provider Support**: Toggle between Perplexity and Anthropic Claude as research providers
+  - New `AnthropicClient` (`src/research/anthropic_client.py`) with matching interface to `PerplexityClient`
+  - Anthropic Claude uses `claude-sonnet-4-5-20250929` model for research
+  - Provider auto-detection based on configured API keys in `.env`
+  - Provider selector in all interfaces (web, interactive CLI, basic CLI)
+- **Provider Selection UI**:
+  - Web interface: dropdown with provider descriptions (only shown when both keys configured)
+  - Interactive CLI: numbered table selection with provider info
+  - Basic CLI: `--provider` flag (`perplexity` or `anthropic`)
+- **Dynamic Configuration**:
+  - `AVAILABLE_PROVIDERS` list auto-populated from set API keys
+  - `DEFAULT_PROVIDER` defaults to first available (prefers Perplexity)
+  - At least one API key required (was previously Perplexity-only)
+- **Anthropic-specific error handling**: `AnthropicAPIError`, `AnthropicRateLimitError`, `AnthropicAuthError`
+- **Combined error handling** across both providers in pipeline, web server, and research modules
+
+### Changed
+- `settings.py`: API keys are now individually optional (at least one required)
+- `UserInput` model: added `provider` field and `get_provider_display()` method
+- `get_client()` factory function now accepts `provider` parameter and caches clients per-provider
+- `suburb_discovery.py` and `suburb_research.py`: route to correct provider client
+- Web server passes provider list and default to templates
+- Interactive CLI dynamically adjusts step numbering based on provider availability
+
+## [1.0.0] - 2026-02-10
+
+### Added
+- FastAPI web interface with browser UI
+- Interactive CLI with prompt_toolkit and rich formatting
+- Quick mode for interactive CLI
 
 ## [0.1.0] - 2026-02-01
 
@@ -117,6 +149,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.1.0** (2026-02-13): Dual AI provider support (Perplexity + Anthropic Claude)
+- **v1.0.0** (2026-02-10): Web interface + interactive CLI
 - **v0.1.0** (2026-02-01): Initial release with core functionality
 
 ---

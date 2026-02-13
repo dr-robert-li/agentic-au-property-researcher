@@ -19,7 +19,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config import regions_data
+from config import settings, regions_data
 from models.inputs import UserInput
 from app import run_research_pipeline
 
@@ -76,6 +76,59 @@ def print_welcome():
     console.print()
 
 
+def select_provider() -> str:
+    """Interactive provider selection. Returns provider name."""
+    available = settings.AVAILABLE_PROVIDERS
+
+    if len(available) == 1:
+        provider = available[0]
+        label = "Perplexity" if provider == "perplexity" else "Anthropic Claude"
+        console.print(f"[dim]Provider: {label} (only provider configured)[/dim]")
+        return provider
+
+    console.print("[bold]Select AI Research Provider[/bold]")
+    console.print()
+
+    table = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Provider", style="cyan")
+    table.add_column("Description", style="dim")
+
+    provider_info = {
+        "perplexity": ("Perplexity", "Deep research with live web search for current data"),
+        "anthropic": ("Anthropic Claude", "claude-sonnet-4-5 model, uses training data (no live web search)"),
+    }
+
+    for i, p in enumerate(available, 1):
+        name, desc = provider_info.get(p, (p.title(), ""))
+        table.add_row(str(i), name, desc)
+
+    console.print(table)
+    console.print()
+
+    default_idx = available.index(settings.DEFAULT_PROVIDER) + 1
+    provider_completer = WordCompleter([str(i+1) for i in range(len(available))], ignore_case=True)
+
+    while True:
+        response = prompt(
+            f"Select provider (default {default_idx}): ",
+            default=str(default_idx),
+            completer=provider_completer,
+        ).strip()
+
+        try:
+            idx = int(response)
+            if 1 <= idx <= len(available):
+                selected = available[idx - 1]
+                name = provider_info.get(selected, (selected.title(),))[0]
+                console.print(f"[green]✓[/green] Provider: {name}\n")
+                return selected
+            else:
+                console.print(f"[red]Invalid selection. Choose 1-{len(available)}[/red]")
+        except ValueError:
+            console.print("[red]Please enter a number.[/red]")
+
+
 def select_regions() -> List[str]:
     """Interactive region selection."""
     console.print("[bold]Select Regions[/bold]")
@@ -127,8 +180,17 @@ def interactive_mode():
     print_welcome()
 
     try:
+        # Step 0: Select provider (only shown if multiple available)
+        step_num = 1
+        if len(settings.AVAILABLE_PROVIDERS) > 1:
+            console.print(f"[bold]Step {step_num}: AI Provider[/bold]")
+            provider = select_provider()
+            step_num += 1
+        else:
+            provider = settings.DEFAULT_PROVIDER
+
         # Get max price
-        console.print("[bold]Step 1: Maximum Median Price[/bold]")
+        console.print(f"[bold]Step {step_num}: Maximum Median Price[/bold]")
         max_price_str = prompt(
             "Enter maximum median price (AUD): ",
             default="700000",
@@ -136,9 +198,10 @@ def interactive_mode():
         )
         max_price = float(max_price_str)
         console.print(f"[green]✓[/green] Max price: ${max_price:,.0f}\n")
+        step_num += 1
 
         # Get dwelling type
-        console.print("[bold]Step 2: Dwelling Type[/bold]")
+        console.print(f"[bold]Step {step_num}: Dwelling Type[/bold]")
         dwelling_types = ["house", "apartment", "townhouse"]
         dwelling_completer = WordCompleter(dwelling_types, ignore_case=True)
 
@@ -153,14 +216,16 @@ def interactive_mode():
                 console.print(f"[green]✓[/green] Dwelling type: {dwelling_type.title()}\n")
                 break
             console.print("[red]Invalid dwelling type. Please choose: house, apartment, or townhouse[/red]")
+        step_num += 1
 
         # Select regions
-        console.print("[bold]Step 3: Regions[/bold]")
+        console.print(f"[bold]Step {step_num}: Regions[/bold]")
         regions = select_regions()
         console.print(f"[green]✓[/green] Selected {len(regions)} region(s)\n")
+        step_num += 1
 
         # Get number of suburbs
-        console.print("[bold]Step 4: Number of Suburbs[/bold]")
+        console.print(f"[bold]Step {step_num}: Number of Suburbs[/bold]")
         num_suburbs_str = prompt(
             "Enter number of top suburbs to analyze: ",
             default="5",
@@ -169,9 +234,13 @@ def interactive_mode():
         num_suburbs = int(num_suburbs_str)
         console.print(f"[green]✓[/green] Analyzing top {num_suburbs} suburbs\n")
 
+        # Provider display name
+        provider_display = "Perplexity (Deep Research)" if provider == "perplexity" else "Anthropic Claude (claude-sonnet-4-5)"
+
         # Confirmation
         console.print(Panel.fit(
             f"[bold]Research Configuration[/bold]\n\n"
+            f"Provider: [cyan]{provider_display}[/cyan]\n"
             f"Max Price: [cyan]${max_price:,.0f}[/cyan]\n"
             f"Dwelling: [cyan]{dwelling_type.title()}[/cyan]\n"
             f"Regions: [cyan]{', '.join(regions[:3])}{'...' if len(regions) > 3 else ''}[/cyan] ({len(regions)} total)\n"
@@ -193,6 +262,7 @@ def interactive_mode():
             dwelling_type=dwelling_type,
             regions=regions,
             num_suburbs=num_suburbs,
+            provider=provider,
             run_id=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
             interface_mode="cli"
         )
@@ -261,7 +331,11 @@ def quick_mode():
         num_suburbs_str = prompt("Number of suburbs (default 5): ", default="5")
         num_suburbs = int(num_suburbs_str)
 
+        provider = settings.DEFAULT_PROVIDER
+        provider_display = "Perplexity" if provider == "perplexity" else "Anthropic Claude"
+
         console.print(f"\n[green]✓[/green] Configuration set")
+        console.print(f"  Provider: {provider_display}")
         console.print(f"  Price: ${max_price:,.0f}")
         console.print(f"  Type: House")
         console.print(f"  Region: South East Queensland")
@@ -274,6 +348,7 @@ def quick_mode():
             dwelling_type="house",
             regions=["South East Queensland"],
             num_suburbs=num_suburbs,
+            provider=provider,
             run_id=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
             interface_mode="cli"
         )

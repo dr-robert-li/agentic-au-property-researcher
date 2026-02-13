@@ -20,6 +20,16 @@ from reporting.html_renderer import generate_all_reports, copy_static_assets
 from research.perplexity_client import (
     PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
 )
+from research.anthropic_client import (
+    AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError
+)
+
+# Combined error tuples for handling
+API_CREDIT_AUTH_ERRORS = (
+    PerplexityRateLimitError, PerplexityAuthError,
+    AnthropicRateLimitError, AnthropicAuthError,
+)
+API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
 
 
 def run_research_pipeline(user_input: UserInput) -> RunResult:
@@ -36,6 +46,7 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
     print("🏘️  AUSTRALIAN PROPERTY RESEARCH PIPELINE")
     print("="*80)
     print(f"\nRun ID: {user_input.run_id}")
+    print(f"Provider: {user_input.get_provider_display()}")
     print(f"Regions: {', '.join(user_input.regions)}")
     print(f"Dwelling Type: {user_input.dwelling_type}")
     print(f"Max Price: ${user_input.max_median_price:,.0f}")
@@ -70,7 +81,8 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
             candidates,
             user_input.dwelling_type,
             user_input.max_median_price,
-            max_suburbs=min(len(candidates), user_input.num_suburbs * 2)  # Research 2x for ranking
+            max_suburbs=min(len(candidates), user_input.num_suburbs * 2),  # Research 2x for ranking
+            provider=user_input.provider
         )
 
         if not metrics_list:
@@ -120,7 +132,7 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
         run_result.status = "cancelled"
         return run_result
 
-    except (PerplexityRateLimitError, PerplexityAuthError) as e:
+    except API_CREDIT_AUTH_ERRORS as e:
         # Handle API credit/auth errors with specific messaging
         print(f"\n\n{'='*80}")
         print(str(e))
@@ -129,10 +141,10 @@ def run_research_pipeline(user_input: UserInput) -> RunResult:
         run_result.error_message = str(e)
         return run_result
 
-    except PerplexityAPIError as e:
+    except API_GENERAL_ERRORS as e:
         # Handle general API errors
         print(f"\n\n{'='*80}")
-        print(f"❌ PERPLEXITY API ERROR")
+        print(f"❌ API ERROR")
         print(f"{'='*80}")
         print(str(e))
         print(f"{'='*80}\n")
@@ -161,17 +173,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage
+  # Basic usage (uses default provider)
   python -m src.app --max-price 700000 --dwelling-type house
 
-  # Specific region
-  python -m src.app --regions "South East Queensland" --max-price 800000 --dwelling-type apartment
+  # Use Anthropic Claude as provider
+  python -m src.app --max-price 700000 --dwelling-type house --provider anthropic
+
+  # Use Perplexity with specific region
+  python -m src.app --regions "South East Queensland" --max-price 800000 --dwelling-type apartment --provider perplexity
 
   # Multiple regions
   python -m src.app --regions "South East Queensland" "Northern NSW" --max-price 650000 --dwelling-type house --num-suburbs 10
-
-  # Quick test
-  python -m src.app --max-price 600000 --dwelling-type house --num-suburbs 3
         """
     )
 
@@ -205,6 +217,14 @@ Examples:
     )
 
     parser.add_argument(
+        "--provider",
+        type=str,
+        choices=settings.AVAILABLE_PROVIDERS,
+        default=settings.DEFAULT_PROVIDER,
+        help=f"AI research provider (available: {', '.join(settings.AVAILABLE_PROVIDERS)}; default: {settings.DEFAULT_PROVIDER})"
+    )
+
+    parser.add_argument(
         "--run-id",
         type=str,
         default=None,
@@ -228,6 +248,7 @@ Examples:
         dwelling_type=args.dwelling_type,
         regions=args.regions,
         num_suburbs=args.num_suburbs,
+        provider=args.provider,
         run_id=args.run_id or datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
         interface_mode="cli"
     )

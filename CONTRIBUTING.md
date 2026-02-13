@@ -44,7 +44,9 @@ This project adheres to a code of conduct that all contributors are expected to 
 
 - Python 3.10 or higher
 - Git
-- Perplexity API key (for testing integration)
+- At least one API key for testing:
+  - Perplexity API key (for Perplexity provider integration testing)
+  - Anthropic API key (for Claude provider integration testing)
 
 ### Environment Setup
 
@@ -69,7 +71,9 @@ This project adheres to a code of conduct that all contributors are expected to 
 4. Set up environment variables:
    ```bash
    cp .env.example .env
-   # Edit .env and add your PERPLEXITY_API_KEY
+   # Edit .env and add at least one API key:
+   # PERPLEXITY_API_KEY=your-key-here
+   # ANTHROPIC_API_KEY=your-key-here
    ```
 
 ## How to Contribute
@@ -103,12 +107,11 @@ Enhancement suggestions are tracked as GitHub Issues. When creating an enhanceme
 Areas where contributions are especially welcome:
 
 1. **New Features**:
-   - FastAPI web interface implementation
-   - Interactive CLI with prompt_toolkit
    - PDF/Excel export functionality
    - Data caching layer
    - Additional chart types
    - New region definitions
+   - Additional AI provider integrations
 
 2. **Improvements**:
    - Performance optimizations
@@ -324,18 +327,22 @@ agentic-re-researcher/
 │   │   ├── suburb_metrics.py # Suburb data models
 │   │   └── run_result.py    # Result models
 │   ├── research/            # Research and API integration
-│   │   ├── perplexity_client.py
+│   │   ├── perplexity_client.py  # Perplexity provider client
+│   │   ├── anthropic_client.py   # Anthropic Claude provider client
 │   │   ├── suburb_discovery.py
 │   │   ├── suburb_research.py
 │   │   └── ranking.py
 │   ├── reporting/           # Report generation
 │   │   ├── charts.py        # Chart generation
 │   │   └── html_renderer.py # HTML rendering
-│   ├── ui/                  # User interface
-│   │   └── web/
-│   │       ├── templates/   # Jinja2 templates
-│   │       └── static/      # CSS, JS, images
-│   └── app.py              # Main application
+│   ├── ui/                  # User interfaces
+│   │   ├── web/
+│   │   │   ├── server.py    # FastAPI web server
+│   │   │   ├── templates/   # Jinja2 templates
+│   │   │   └── static/      # CSS, JS, images
+│   │   └── cli/
+│   │       └── interactive.py # Interactive CLI with prompt_toolkit
+│   └── app.py              # Main application orchestrator
 ├── tests/                   # Test suite
 ├── runs/                    # Output directory (gitignored)
 ├── .env.example            # Environment template
