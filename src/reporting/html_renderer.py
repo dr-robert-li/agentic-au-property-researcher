@@ -52,7 +52,8 @@ def render_overview_report(
         'top_n': run_result.user_input.num_suburbs,
         'reports': run_result.get_top_suburbs(),
         'stats': stats,
-        'overview_charts': {}
+        'overview_charts': {},
+        'css_base': '.',  # index.html is at run root, static/ is sibling
     }
 
     # Generate overview charts
