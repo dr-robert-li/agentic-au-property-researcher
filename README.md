@@ -1,12 +1,12 @@
 # Agentic Australian Property Researcher 🏘️
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 **Author:** Dr. Robert Li
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 
 ---
 
@@ -461,13 +461,14 @@ See `src/models/suburb_metrics.py` for complete schema.
 # Activate virtual environment
 source venv/bin/activate
 
-# Run all test suites (88+ tests)
-python tests/test_cache.py && python tests/test_comparison.py && python tests/test_pipeline.py
+# Run all test suites (183+ tests)
+python tests/test_cache.py && python tests/test_comparison.py && python tests/test_pipeline.py && python tests/test_cache_resilience.py
 
 # Run specific test suite
 python tests/test_pipeline.py          # Pipeline resilience & progress (22 tests)
 python tests/test_cache.py             # Research cache (41 tests)
 python tests/test_comparison.py        # Run comparison (25 tests)
+python tests/test_cache_resilience.py  # Cache resilience & UI (18 tests)
 python tests/test_models.py            # Config & data models
 python tests/test_research_ranking.py  # Ranking logic
 python tests/test_exports.py           # PDF & Excel exports (77 tests)

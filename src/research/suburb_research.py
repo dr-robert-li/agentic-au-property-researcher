@@ -168,9 +168,14 @@ Begin your response with the opening brace {{
     if cached is not None:
         logger.info("Cache HIT for %s", candidate.name)
         print(f"   (Using cached research data)")
-        metrics = _parse_metrics_from_json(cached)
-        print(f"✓ Research complete for {candidate.name} (cached)")
-        return metrics
+        try:
+            metrics = _parse_metrics_from_json(cached)
+            print(f"✓ Research complete for {candidate.name} (cached)")
+            return metrics
+        except Exception as e:
+            logger.warning("Cached data failed to parse for %s, will re-fetch: %s", candidate.name, e)
+            print(f"   Cached data invalid, re-fetching from API...")
+            cache.invalidate("research", **cache_key_parts)
 
     logger.info("Cache MISS for %s", candidate.name)
 

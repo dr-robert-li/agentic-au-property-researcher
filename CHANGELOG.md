@@ -10,6 +10,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - No additional features planned at this time
 
+## [1.6.0] - 2026-02-13
+
+### Added
+- **Cache Management on Home Page**: Cache stats and clear button on the web UI landing page
+  - Displays discovery cache count, research cache count, and total entries
+  - "Clear Cache" button calls `POST /cache/clear` with visual feedback
+  - Stats auto-load on page load via `GET /cache/stats`
+  - Button auto-disables when cache is empty
+- **Unit Tests**: 18 new cache resilience and UI tests (`test_cache_resilience.py`)
+  - `_coerce_to_str_list` tests (6): string pass-through, dict coercion, mixed types, empty list, empty values, complex transport dicts
+  - `_parse_metrics_from_json` tests (6): minimal valid data, bad market_history, bad demographics, infrastructure with dicts, bad growth projections, all sections bad
+  - Cached data path tests (2): invalid cache triggers re-fetch, valid cache skips API
+  - Web UI structural tests (4): cache section presence, stats display, server endpoints, try/except in cached path
+
+### Fixed
+- **Cached Data Resilience**: Invalid cached research data no longer crashes the pipeline
+  - Wrapped cached code path in try/except — if `_parse_metrics_from_json` fails on cached data, the invalid entry is automatically invalidated and the suburb is re-fetched from the API
+  - Previously, corrupted or incompatible cached data (e.g. dicts where strings were expected) would raise an unhandled exception
+
+### Changed
+- `src/research/suburb_research.py`: Cached data path now wrapped in try/except with `cache.invalidate()` fallback
+- `src/ui/web/templates/web_index.html`: Added cache management card with stats grid and clear button
+- Updated footer version to 1.6.0
+
 ## [1.5.0] - 2026-02-13
 
 ### Changed
@@ -280,6 +304,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.6.0** (2026-02-13): Cache resilience + home page cache management
 - **v1.5.0** (2026-02-13): Test organization, API response resilience, CSS fix
 - **v1.4.0** (2026-02-13): Pipeline resilience + real-time progress visibility
 - **v1.3.0** (2026-02-13): Historical data caching + run comparison mode
