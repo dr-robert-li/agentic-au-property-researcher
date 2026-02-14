@@ -178,7 +178,11 @@ def _add_title_page(pdf: PropertyReportPDF, run_result: RunResult):
         pdf.set_font('Helvetica', 'B', 10)
         pdf.cell(35, 8, f'{label}:', align='L')
         pdf.set_font('Helvetica', '', 10)
-        pdf.cell(box_w - 35, 8, value, align='L', new_x="LMARGIN", new_y="NEXT")
+        saved_l_margin = pdf.l_margin
+        pdf.l_margin = pdf.get_x()
+        pdf.multi_cell(box_w - 35, 8, value, align='L')
+        pdf.l_margin = saved_l_margin
+        pdf.x = saved_l_margin
 
     pdf._is_title_page = False
 
@@ -205,13 +209,18 @@ def _add_sub_heading(pdf: PropertyReportPDF, text: str):
 
 
 def _add_key_value_pair(pdf: PropertyReportPDF, key: str, value: str, col_width: float = 55):
-    """Add a label-value pair on one line."""
+    """Add a label-value pair, wrapping long values within the value column."""
     pdf.set_font('Helvetica', 'B', 9)
     pdf.set_text_color(*COLOR_GRAY)
     pdf.cell(col_width, 6, f'{key}:', align='L')
     pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(*COLOR_DARK)
-    pdf.cell(CONTENT_WIDTH - col_width, 6, value, align='L', new_x="LMARGIN", new_y="NEXT")
+    # Temporarily shift left margin so wrapped continuation lines align with value column
+    saved_l_margin = pdf.l_margin
+    pdf.l_margin = pdf.get_x()
+    pdf.multi_cell(CONTENT_WIDTH - col_width, 6, value)
+    pdf.l_margin = saved_l_margin
+    pdf.x = saved_l_margin
 
 
 def _add_overview_section(pdf: PropertyReportPDF, run_result: RunResult):
@@ -378,9 +387,13 @@ def _add_suburb_section(pdf: PropertyReportPDF, report: SuburbReport, output_dir
         _add_sub_heading(pdf, 'Key Growth Drivers')
         pdf.set_font('Helvetica', '', 9)
         for driver in gp.key_drivers[:8]:
-            driver_text = str(driver)[:120]
+            driver_text = str(driver)
             pdf.cell(5, 5, '', align='L')
-            pdf.cell(CONTENT_WIDTH - 5, 5, f'- {driver_text}', new_x="LMARGIN", new_y="NEXT")
+            saved_l_margin = pdf.l_margin
+            pdf.l_margin = pdf.get_x()
+            pdf.multi_cell(CONTENT_WIDTH - 5, 5, f'- {driver_text}')
+            pdf.l_margin = saved_l_margin
+            pdf.x = saved_l_margin
         pdf.ln(2)
 
     # Current market metrics
@@ -418,23 +431,22 @@ def _add_suburb_section(pdf: PropertyReportPDF, report: SuburbReport, output_dir
     if has_infra:
         _add_sub_heading(pdf, 'Infrastructure & Amenities')
         if inf.current_transport:
-            _add_key_value_pair(pdf, 'Current Transport', _safe_str(inf.current_transport)[:150], col_width=40)
+            _add_key_value_pair(pdf, 'Current Transport', _safe_str(inf.current_transport), col_width=40)
         if inf.future_transport:
-            _add_key_value_pair(pdf, 'Future Transport', _safe_str(inf.future_transport)[:150], col_width=40)
+            _add_key_value_pair(pdf, 'Future Transport', _safe_str(inf.future_transport), col_width=40)
         if inf.planned_infrastructure:
-            _add_key_value_pair(pdf, 'Planned Projects', _safe_str(inf.planned_infrastructure)[:150], col_width=40)
+            _add_key_value_pair(pdf, 'Planned Projects', _safe_str(inf.planned_infrastructure), col_width=40)
         if inf.schools_summary:
-            _add_key_value_pair(pdf, 'Schools', _safe_str(inf.schools_summary)[:150], col_width=40)
+            _add_key_value_pair(pdf, 'Schools', _safe_str(inf.schools_summary), col_width=40)
         if inf.shopping_access:
-            _add_key_value_pair(pdf, 'Shopping', _safe_str(inf.shopping_access)[:150], col_width=40)
+            _add_key_value_pair(pdf, 'Shopping', _safe_str(inf.shopping_access), col_width=40)
         pdf.ln(2)
 
     # Risk analysis
     if gp.risk_analysis:
         _add_sub_heading(pdf, 'Risk Analysis')
         pdf.set_font('Helvetica', '', 9)
-        risk_text = str(gp.risk_analysis)[:500]
-        pdf.multi_cell(CONTENT_WIDTH, 5, risk_text)
+        pdf.multi_cell(CONTENT_WIDTH, 5, str(gp.risk_analysis))
         pdf.ln(2)
 
     # Embed suburb charts
