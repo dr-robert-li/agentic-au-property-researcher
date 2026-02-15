@@ -9,6 +9,7 @@ from typing import Optional, Callable
 
 from config import settings
 from research.cache import get_cache
+from research.validation import validate_research_response
 
 logger = logging.getLogger(__name__)
 
@@ -165,11 +166,17 @@ Begin your response with the opening brace {{
         logger.info("Cache HIT for %s", candidate.name)
         print(f"   (Using cached research data)")
         try:
-            metrics = _parse_metrics_from_json(cached)
+            # Validate cached data before using it
+            validation_result = validate_research_response(cached, candidate.name)
+            if validation_result.warnings:
+                for warning in validation_result.warnings:
+                    logger.warning("Cached research data warning for %s: %s", candidate.name, warning)
+            # Use validated data
+            metrics = _parse_metrics_from_json(validation_result.data)
             print(f"✓ Research complete for {candidate.name} (cached)")
             return metrics
         except Exception as e:
-            logger.warning("Cached data failed to parse for %s, will re-fetch: %s", candidate.name, e)
+            logger.warning("Cached data failed validation for %s, will re-fetch: %s", candidate.name, e)
             print(f"   Cached data invalid, re-fetching from API...")
             cache.invalidate("research", **cache_key_parts)
 
@@ -190,11 +197,24 @@ Begin your response with the opening brace {{
             # Fall back to basic data from candidate
             return _create_fallback_metrics(candidate)
 
-        # Cache the raw parsed data
-        cache.put("research", data, **cache_key_parts)
+        # Validate the response before caching
+        try:
+            validation_result = validate_research_response(data, candidate.name)
+            if validation_result.warnings:
+                for warning in validation_result.warnings:
+                    logger.warning("Research validation warning for %s: %s", candidate.name, warning)
+            # Use validated data
+            validated_data = validation_result.data
+        except Exception as e:
+            logger.warning("Research validation failed for %s, using fallback: %s", candidate.name, e)
+            print(f"   Validation failed, using fallback metrics...")
+            return _create_fallback_metrics(candidate)
+
+        # Cache the validated data
+        cache.put("research", validated_data, **cache_key_parts)
 
         # Parse into SuburbMetrics
-        metrics = _parse_metrics_from_json(data)
+        metrics = _parse_metrics_from_json(validated_data)
 
         print(f"✓ Research complete for {candidate.name}")
         return metrics

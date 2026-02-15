@@ -11,6 +11,7 @@ from config import regions_data, settings
 from models.inputs import UserInput
 from research.perplexity_client import get_client
 from research.cache import get_cache, ResearchCache
+from research.validation import validate_discovery_response
 from security.exceptions import ACCOUNT_ERRORS
 
 logger = logging.getLogger(__name__)
@@ -139,18 +140,29 @@ Begin your response with the opening square bracket [
     if cached is not None:
         logger.info("Cache HIT for discovery")
         print("   (Using cached discovery results)")
-        candidates = [SuburbCandidate(item) for item in cached if isinstance(item, dict)]
-        pre_filter_count = len(candidates)
-        candidates = [
-            c for c in candidates
-            if c.median_price > 0 and c.median_price <= user_input.max_median_price
-        ]
-        if pre_filter_count != len(candidates):
-            print(f"   Price filter: {pre_filter_count} -> {len(candidates)} candidates ({pre_filter_count - len(candidates)} removed)")
-        if max_results:
-            candidates = candidates[:max_results]
-        print(f"✓ Found {len(candidates)} qualifying suburbs (cached)")
-        return candidates
+        # Validate cached data before using it
+        validation_result = validate_discovery_response(cached)
+        if not validation_result.is_valid:
+            logger.warning("Cached discovery data failed validation, re-fetching")
+            print("   Cached data invalid, re-fetching from API...")
+            cache.invalidate("discovery", **cache_key_parts)
+            cached = None
+        else:
+            if validation_result.warnings:
+                for warning in validation_result.warnings:
+                    logger.warning("Cached discovery data warning: %s", warning)
+            candidates = [SuburbCandidate(item) for item in validation_result.data if isinstance(item, dict)]
+            pre_filter_count = len(candidates)
+            candidates = [
+                c for c in candidates
+                if c.median_price > 0 and c.median_price <= user_input.max_median_price
+            ]
+            if pre_filter_count != len(candidates):
+                print(f"   Price filter: {pre_filter_count} -> {len(candidates)} candidates ({pre_filter_count - len(candidates)} removed)")
+            if max_results:
+                candidates = candidates[:max_results]
+            print(f"✓ Found {len(candidates)} qualifying suburbs (cached)")
+            return candidates
 
     logger.info("Cache MISS for discovery")
 
@@ -169,7 +181,7 @@ Begin your response with the opening square bracket [
             print(f"Raw response: {response[:500]}")
             raise Exception("Failed to parse suburb discovery response as JSON")
 
-        # Normalize data to list format for caching
+        # Normalize data to list format for validation
         if isinstance(data, list):
             raw_list = [item for item in data if isinstance(item, dict)]
         elif isinstance(data, dict) and "suburbs" in data:
@@ -177,11 +189,21 @@ Begin your response with the opening square bracket [
         else:
             raise Exception(f"Unexpected response format: {type(data)}")
 
-        # Cache the raw list before filtering
-        cache.put("discovery", raw_list, **cache_key_parts)
+        # Validate the response before caching
+        validation_result = validate_discovery_response(raw_list)
+        if not validation_result.is_valid:
+            raise Exception("Discovery validation failed: " + "; ".join(validation_result.warnings))
+
+        # Log warnings for items that failed validation
+        if validation_result.warnings:
+            for warning in validation_result.warnings:
+                logger.warning("Discovery validation warning: %s", warning)
+
+        # Cache the validated data
+        cache.put("discovery", validation_result.data, **cache_key_parts)
 
         # Convert to SuburbCandidate objects
-        candidates = [SuburbCandidate(item) for item in raw_list]
+        candidates = [SuburbCandidate(item) for item in validation_result.data]
 
         # Filter by price (in case the API included some above threshold)
         pre_filter_count = len(candidates)
