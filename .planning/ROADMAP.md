@@ -33,8 +33,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Security hardening: global log sanitization, input validation (regions/run_id/cache paths), startup API key validation, FastAPI error handler sanitization
-- [ ] 01-02-PLAN.md -- Exception hierarchy: typed ApplicationError hierarchy with structured metadata, SDK exception wrapping, handler migration from string matching to isinstance
+- [x] 01-01-PLAN.md -- Security hardening: global log sanitization, input validation (regions/run_id/cache paths), startup API key validation, FastAPI error handler sanitization
+- [x] 01-02-PLAN.md -- Exception hierarchy: typed ApplicationError hierarchy with structured metadata, SDK exception wrapping, handler migration from string matching to isinstance
 
 ### Phase 2: Thread Safety & Response Validation
 **Goal**: Concurrent research runs do not corrupt shared state, and malformed API responses are caught before they enter the cache
@@ -45,11 +45,11 @@ Plans:
   2. Cache initialization from multiple threads always returns the same singleton instance with no duplicate initialization
   3. A Perplexity response with a string price like "450000" instead of integer is coerced and accepted, not rejected
   4. A response missing required fields (e.g., no median_price) produces a structured warning with field-level detail, and the suburb is flagged rather than silently dropped
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: Thread-safe singleton cache and web server state protection
-- [ ] 02-02: API response validation schemas with flexible coercion
+- [ ] 02-01-PLAN.md -- Thread-safe singleton cache with double-checked locking, web server state protection with threading.Lock, queue-based progress reporting
+- [ ] 02-02-PLAN.md -- Pydantic validation schemas for discovery and research API responses with flexible coercion, structured warnings, wired into pipelines before caching
 
 ### Phase 3: Cache Hardening & Crash Recovery
 **Goal**: Cache files survive crashes without corruption, and interrupted research runs can be resumed from the last completed suburb
