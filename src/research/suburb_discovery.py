@@ -9,17 +9,14 @@ from typing import Optional, Callable
 
 from config import regions_data, settings
 from models.inputs import UserInput
-from research.perplexity_client import get_client, PerplexityRateLimitError, PerplexityAuthError
-from research.anthropic_client import AnthropicRateLimitError, AnthropicAuthError
+from research.perplexity_client import get_client
 from research.cache import get_cache, ResearchCache
+from security.exceptions import ACCOUNT_ERRORS
 
 logger = logging.getLogger(__name__)
 
 # Account-level errors that should stop all parallel workers
-API_ACCOUNT_ERRORS = (
-    PerplexityRateLimitError, PerplexityAuthError,
-    AnthropicRateLimitError, AnthropicAuthError,
-)
+API_ACCOUNT_ERRORS = ACCOUNT_ERRORS
 
 
 class AccountErrorSignal:

@@ -7,16 +7,37 @@ import time
 from typing import Optional
 
 from config import settings
+from security.exceptions import RateLimitError, AuthenticationError, APIError, TimeoutError, NetworkError
+from security.sanitization import sanitize_text
 
 
-class AnthropicAPIError(Exception):
+# Provider-specific exception subclasses
+class AnthropicAPIError(APIError):
     """Base exception for Anthropic API errors."""
-    pass
+    def __init__(self, message: str = None, status_code: Optional[int] = None):
+        default_msg = (
+            "\n⚠️  ANTHROPIC API ERROR\n\n"
+            "The Anthropic API request failed.\n\n"
+            "Possible causes:\n"
+            "  • Network connectivity issues\n"
+            "  • API service temporarily unavailable\n"
+            "  • Request timeout\n\n"
+            "Suggestions:\n"
+            "  • Check your internet connection\n"
+            "  • Try again in a few minutes\n"
+            "  • Check Anthropic API status at: https://status.anthropic.com\n"
+            "  • Verify your API key at: https://console.anthropic.com/settings/keys\n"
+        )
+        super().__init__(
+            message=message or default_msg,
+            status_code=status_code,
+            provider="anthropic"
+        )
 
 
-class AnthropicRateLimitError(AnthropicAPIError):
+class AnthropicRateLimitError(RateLimitError):
     """Exception raised when API rate limit is exceeded."""
-    def __init__(self, message: str = None):
+    def __init__(self, message: str = None, retry_after: Optional[int] = 60):
         default_msg = (
             "\n⚠️  API RATE LIMIT EXCEEDED\n\n"
             "Your Anthropic API request was rate limited. This typically means:\n"
@@ -27,10 +48,14 @@ class AnthropicRateLimitError(AnthropicAPIError):
             "  → If rate limited, wait a few minutes and try again\n"
             "  → Consider reducing the number of suburbs\n"
         )
-        super().__init__(message or default_msg)
+        super().__init__(
+            message=message or default_msg,
+            retry_after=retry_after,
+            provider="anthropic"
+        )
 
 
-class AnthropicAuthError(AnthropicAPIError):
+class AnthropicAuthError(AuthenticationError):
     """Exception raised when API authentication fails."""
     def __init__(self, message: str = None):
         default_msg = (
@@ -41,7 +66,7 @@ class AnthropicAuthError(AnthropicAPIError):
             "  → Verify the key at: https://console.anthropic.com/settings/keys\n"
             "  → Generate a new API key if needed\n"
         )
-        super().__init__(message or default_msg)
+        super().__init__(message=message or default_msg, provider="anthropic")
 
 
 class AnthropicClient:
@@ -151,35 +176,54 @@ class AnthropicClient:
 
             except Exception as e:
                 last_exception = e
-                error_str = str(e).lower()
+                import anthropic
 
-                # Check for rate limiting
-                if any(indicator in error_str for indicator in [
-                    'rate_limit', 'rate limit', '429', 'too many requests',
-                    'overloaded', 'capacity'
-                ]):
-                    raise AnthropicRateLimitError()
+                # Sanitize error message before any processing
+                sanitized_error = sanitize_text(str(e))
 
-                # Check for authentication issues
-                if any(indicator in error_str for indicator in [
-                    'authentication', 'invalid.*key', 'invalid api key',
-                    'unauthorized', '401', '403', 'forbidden',
-                    'permission'
-                ]):
-                    raise AnthropicAuthError()
+                # Use isinstance checks for Anthropic SDK exceptions
+                if isinstance(e, anthropic.RateLimitError):
+                    # Extract retry_after if available
+                    retry_after = getattr(e, 'retry_after', None) or 60
+                    raise AnthropicRateLimitError(sanitized_error, retry_after=retry_after) from e
+
+                elif isinstance(e, anthropic.AuthenticationError):
+                    raise AnthropicAuthError(sanitized_error) from e
+
+                elif isinstance(e, anthropic.APIConnectionError):
+                    raise NetworkError(sanitized_error, provider="anthropic") from e
+
+                elif isinstance(e, anthropic.APITimeoutError):
+                    raise TimeoutError(sanitized_error, timeout_seconds=timeout, provider="anthropic") from e
+
+                elif isinstance(e, anthropic.APIStatusError):
+                    # Extract status code
+                    status_code = getattr(e, 'status_code', None)
+                    if status_code and status_code >= 500:
+                        raise AnthropicAPIError(sanitized_error, status_code=status_code) from e
+                    elif status_code == 429:
+                        # Secondary catch for rate limits not caught by RateLimitError
+                        raise AnthropicRateLimitError(sanitized_error) from e
+                    elif status_code in (401, 403):
+                        # Secondary catch for auth not caught by AuthenticationError
+                        raise AnthropicAuthError(sanitized_error) from e
+                    else:
+                        # Other status errors
+                        raise AnthropicAPIError(sanitized_error, status_code=status_code) from e
 
                 # For other errors, retry with exponential backoff
                 if attempt < max_retries - 1:
                     wait_time = settings.RETRY_DELAY * (2 ** attempt)
                     print(f"⚠️  API call failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
-                    print(f"   Error: {e}")
+                    print(f"   Error: {sanitized_error}")
                     time.sleep(wait_time)
                 else:
                     print(f"❌ API call failed after {max_retries} attempts")
 
+        sanitized_last_error = sanitize_text(str(last_exception))
         error_msg = (
             f"\n❌ Anthropic API call failed after {max_retries} attempts.\n\n"
-            f"Last error: {last_exception}\n\n"
+            f"Last error: {sanitized_last_error}\n\n"
             f"Possible causes:\n"
             f"  • Network connectivity issues\n"
             f"  • API service temporarily unavailable\n"
@@ -190,7 +234,7 @@ class AnthropicClient:
             f"  • Check Anthropic API status at: https://status.anthropic.com\n"
             f"  • Verify your API key at: https://console.anthropic.com/settings/keys\n"
         )
-        raise AnthropicAPIError(error_msg)
+        raise AnthropicAPIError(error_msg) from last_exception
 
     def parse_json_response(self, response_text: str) -> dict:
         """

@@ -24,6 +24,8 @@ from models.inputs import UserInput
 from models.run_result import RunResult
 from app import run_research_pipeline
 from config import settings, regions_data
+from security.exceptions import ACCOUNT_ERRORS, TRANSIENT_ERRORS, ApplicationError
+# Backward compatibility: keep provider-specific imports for isinstance checks
 from research.perplexity_client import (
     PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
 )
@@ -31,12 +33,9 @@ from research.anthropic_client import (
     AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError
 )
 
-# Combined error tuples
-API_CREDIT_AUTH_ERRORS = (
-    PerplexityRateLimitError, PerplexityAuthError,
-    AnthropicRateLimitError, AnthropicAuthError,
-)
-API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
+# Use the new exception hierarchy tuples
+API_CREDIT_AUTH_ERRORS = ACCOUNT_ERRORS
+API_GENERAL_ERRORS = TRANSIENT_ERRORS
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -62,13 +61,29 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Sanitize error message before including in HTTP response
     sanitized_msg = sanitize_text(str(exc))
 
+    # Extract structured metadata from ApplicationError if available
+    error_code = getattr(exc, "error_code", "UNKNOWN")
+    provider = getattr(exc, "provider", None)
+    is_transient = getattr(exc, "is_transient", False)
+
+    # Build response content
+    content = {
+        "error": "Internal server error",
+        "detail": sanitized_msg,
+        "error_code": error_code
+    }
+
+    # Add optional fields if present
+    if provider:
+        content["provider"] = provider
+    if hasattr(exc, "retry_after") and exc.retry_after:
+        content["retry_after"] = exc.retry_after
+
+    content["is_transient"] = is_transient
+
     return JSONResponse(
         status_code=500,
-        content={
-            "error": "Internal server error",
-            "detail": sanitized_msg,
-            "error_code": getattr(exc, "error_code", "UNKNOWN")
-        }
+        content=content
     )
 
 # Templates directory

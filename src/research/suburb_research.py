@@ -24,20 +24,13 @@ from models.suburb_metrics import (
     TimePoint
 )
 from research.suburb_discovery import SuburbCandidate
-from research.perplexity_client import (
-    get_client, PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
-)
-from research.anthropic_client import (
-    AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError
-)
+from research.perplexity_client import get_client
+from security.exceptions import ACCOUNT_ERRORS, TRANSIENT_ERRORS
 
 # Account-level errors (auth, credits, rate limits) — stop the batch immediately
-API_ACCOUNT_ERRORS = (
-    PerplexityRateLimitError, PerplexityAuthError,
-    AnthropicRateLimitError, AnthropicAuthError,
-)
+API_ACCOUNT_ERRORS = ACCOUNT_ERRORS
 # Per-request API errors (timeouts, server errors) — skip suburb, continue batch
-API_TRANSIENT_ERRORS = (PerplexityAPIError, AnthropicAPIError)
+API_TRANSIENT_ERRORS = TRANSIENT_ERRORS
 
 
 def research_suburb(

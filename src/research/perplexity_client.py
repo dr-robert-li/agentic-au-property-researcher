@@ -8,16 +8,37 @@ from typing import Optional, Any
 import os
 
 from config import settings
+from security.exceptions import RateLimitError, AuthenticationError, APIError, TimeoutError, NetworkError
+from security.sanitization import sanitize_text
 
 
-class PerplexityAPIError(Exception):
+# Provider-specific exception subclasses
+class PerplexityAPIError(APIError):
     """Base exception for Perplexity API errors."""
-    pass
+    def __init__(self, message: str = None, status_code: Optional[int] = None):
+        default_msg = (
+            "\n⚠️  PERPLEXITY API ERROR\n\n"
+            "The Perplexity API request failed.\n\n"
+            "Possible causes:\n"
+            "  • Network connectivity issues\n"
+            "  • API service temporarily unavailable\n"
+            "  • Request timeout\n\n"
+            "Suggestions:\n"
+            "  • Check your internet connection\n"
+            "  • Try again in a few minutes\n"
+            "  • Check Perplexity API status\n"
+            "  • Verify your API credits at: https://www.perplexity.ai/account/api/billing\n"
+        )
+        super().__init__(
+            message=message or default_msg,
+            status_code=status_code,
+            provider="perplexity"
+        )
 
 
-class PerplexityRateLimitError(PerplexityAPIError):
+class PerplexityRateLimitError(RateLimitError):
     """Exception raised when API rate limit is exceeded."""
-    def __init__(self, message: str = None):
+    def __init__(self, message: str = None, retry_after: Optional[int] = 60):
         default_msg = (
             "\n⚠️  API RATE LIMIT EXCEEDED OR INSUFFICIENT CREDITS\n\n"
             "Your Perplexity API request was denied. This typically means:\n"
@@ -31,10 +52,14 @@ class PerplexityRateLimitError(PerplexityAPIError):
             "  → If rate limited, wait a few minutes and try again with fewer suburbs\n"
             "  → Verify your API key in .env is correct and active\n"
         )
-        super().__init__(message or default_msg)
+        super().__init__(
+            message=message or default_msg,
+            retry_after=retry_after,
+            provider="perplexity"
+        )
 
 
-class PerplexityAuthError(PerplexityAPIError):
+class PerplexityAuthError(AuthenticationError):
     """Exception raised when API authentication fails."""
     def __init__(self, message: str = None):
         default_msg = (
@@ -46,7 +71,7 @@ class PerplexityAuthError(PerplexityAPIError):
             "    https://www.perplexity.ai/account/api/billing\n"
             "  → Generate a new API key if needed\n"
         )
-        super().__init__(message or default_msg)
+        super().__init__(message=message or default_msg, provider="perplexity")
 
 
 class PerplexityClient:
@@ -147,36 +172,68 @@ class PerplexityClient:
 
             except Exception as e:
                 last_exception = e
-                error_str = str(e).lower()
 
-                # Check for rate limiting or credit issues (401, 429 errors)
-                if any(indicator in error_str for indicator in [
-                    '401', 'unauthorized', 'rate limit', 'quota',
-                    'insufficient credits', 'billing', 'payment required',
-                    '429', 'too many requests'
-                ]):
-                    raise PerplexityRateLimitError()
+                # Sanitize error message before any processing
+                sanitized_error = sanitize_text(str(e))
 
-                # Check for authentication issues
-                if any(indicator in error_str for indicator in [
-                    'invalid api key', 'authentication failed', 'invalid key',
-                    'api key', 'forbidden', '403'
-                ]):
-                    raise PerplexityAuthError()
+                # Try to get status code from exception
+                status_code = getattr(e, 'status_code', None)
+
+                # If no status_code attribute, try to extract from response
+                if status_code is None and hasattr(e, 'response'):
+                    status_code = getattr(e.response, 'status_code', None)
+
+                # Map status codes to exception types
+                if status_code:
+                    if status_code == 401 or status_code == 403:
+                        raise PerplexityAuthError(sanitized_error) from e
+                    elif status_code == 429:
+                        # Try to extract retry_after from headers
+                        retry_after = 60  # default
+                        if hasattr(e, 'response') and hasattr(e.response, 'headers'):
+                            retry_after = int(e.response.headers.get('Retry-After', 60))
+                        raise PerplexityRateLimitError(sanitized_error, retry_after=retry_after) from e
+                    elif status_code == 408 or status_code == 504:
+                        raise TimeoutError(sanitized_error, timeout_seconds=timeout, provider="perplexity") from e
+                    elif status_code >= 500:
+                        raise PerplexityAPIError(sanitized_error, status_code=status_code) from e
+
+                # Fallback: check exception type name if no status code
+                exception_type = type(e).__name__.lower()
+                if 'timeout' in exception_type:
+                    raise TimeoutError(sanitized_error, timeout_seconds=timeout, provider="perplexity") from e
+                elif 'connection' in exception_type or 'network' in exception_type:
+                    raise NetworkError(sanitized_error, provider="perplexity") from e
+
+                # Last resort: string matching only if we have NO other information
+                # This is a fallback for unexpected SDK error formats
+                if status_code is None:
+                    error_str_lower = sanitized_error.lower()
+                    if any(indicator in error_str_lower for indicator in [
+                        '401', 'unauthorized', 'forbidden', '403', 'invalid api key',
+                        'authentication failed', 'invalid key', 'api key'
+                    ]):
+                        raise PerplexityAuthError(sanitized_error) from e
+                    elif any(indicator in error_str_lower for indicator in [
+                        '429', 'rate limit', 'quota', 'insufficient credits',
+                        'billing', 'payment required', 'too many requests'
+                    ]):
+                        raise PerplexityRateLimitError(sanitized_error) from e
 
                 # For other errors, retry with exponential backoff
                 if attempt < max_retries - 1:
                     wait_time = settings.RETRY_DELAY * (2 ** attempt)  # Exponential backoff
                     print(f"⚠️  API call failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
-                    print(f"   Error: {e}")
+                    print(f"   Error: {sanitized_error}")
                     time.sleep(wait_time)
                 else:
                     print(f"❌ API call failed after {max_retries} attempts")
 
         # If we exhausted all retries, provide detailed error message
+        sanitized_last_error = sanitize_text(str(last_exception))
         error_msg = (
             f"\n❌ Perplexity API call failed after {max_retries} attempts.\n\n"
-            f"Last error: {last_exception}\n\n"
+            f"Last error: {sanitized_last_error}\n\n"
             f"Possible causes:\n"
             f"  • Network connectivity issues\n"
             f"  • API service temporarily unavailable\n"
@@ -187,7 +244,7 @@ class PerplexityClient:
             f"  • Check Perplexity API status\n"
             f"  • Verify your API credits at: https://www.perplexity.ai/account/api/billing\n"
         )
-        raise PerplexityAPIError(error_msg)
+        raise PerplexityAPIError(error_msg) from last_exception
 
     def parse_json_response(self, response_text: str) -> dict:
         """

@@ -18,6 +18,8 @@ from research.suburb_discovery import discover_suburbs, parallel_discover_suburb
 from research.suburb_research import batch_research_suburbs, parallel_research_suburbs
 from research.ranking import rank_suburbs, get_ranking_summary
 from reporting.html_renderer import generate_all_reports, copy_static_assets
+from security.exceptions import ACCOUNT_ERRORS, TRANSIENT_ERRORS
+# Backward compatibility: keep provider-specific imports for isinstance checks
 from research.perplexity_client import (
     PerplexityRateLimitError, PerplexityAuthError, PerplexityAPIError
 )
@@ -25,12 +27,9 @@ from research.anthropic_client import (
     AnthropicRateLimitError, AnthropicAuthError, AnthropicAPIError
 )
 
-# Combined error tuples for handling
-API_CREDIT_AUTH_ERRORS = (
-    PerplexityRateLimitError, PerplexityAuthError,
-    AnthropicRateLimitError, AnthropicAuthError,
-)
-API_GENERAL_ERRORS = (PerplexityAPIError, AnthropicAPIError)
+# Use the new exception hierarchy tuples (inherits old types)
+API_CREDIT_AUTH_ERRORS = ACCOUNT_ERRORS
+API_GENERAL_ERRORS = TRANSIENT_ERRORS
 
 
 def run_research_pipeline(
