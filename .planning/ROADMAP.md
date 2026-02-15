@@ -12,7 +12,7 @@ This roadmap hardens the existing v1 property research application into a produc
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Security & Error Foundations** - Close security gaps and establish exception hierarchy for all downstream error handling
+- [x] **Phase 1: Security & Error Foundations** - Close security gaps and establish exception hierarchy for all downstream error handling
 - [ ] **Phase 2: Thread Safety & Response Validation** - Fix concurrency bugs and validate all API responses before caching
 - [ ] **Phase 3: Cache Hardening & Crash Recovery** - Make cache corruption-proof and enable interrupted runs to resume
 - [ ] **Phase 4: Progress, Performance & Data Quality** - Add real-time feedback, adaptive scaling, and data quality tracking
@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Security & Error Foundations | 0/2 | Not started | - |
+| 1. Security & Error Foundations | 2/2 | Complete | 2026-02-16 |
 | 2. Thread Safety & Response Validation | 0/2 | Not started | - |
 | 3. Cache Hardening & Crash Recovery | 0/2 | Not started | - |
 | 4. Progress, Performance & Data Quality | 0/3 | Not started | - |
