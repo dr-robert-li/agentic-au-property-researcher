@@ -295,24 +295,31 @@ class ResearchCache:
 
 # Singleton cache instance
 _cache_instance: Optional[ResearchCache] = None
+_cache_lock = threading.Lock()
 
 
 def get_cache() -> ResearchCache:
     """Get or create the singleton ResearchCache instance."""
     global _cache_instance
-    if _cache_instance is None:
-        from config import settings
-        config = CacheConfig(
-            cache_dir=settings.CACHE_DIR,
-            discovery_ttl=settings.CACHE_DISCOVERY_TTL,
-            research_ttl=settings.CACHE_RESEARCH_TTL,
-            enabled=settings.CACHE_ENABLED,
-        )
-        _cache_instance = ResearchCache(config)
+    # Fast path: check without lock first
+    if _cache_instance is not None:
+        return _cache_instance
+    # Slow path: acquire lock and check again (double-checked locking)
+    with _cache_lock:
+        if _cache_instance is None:
+            from config import settings
+            config = CacheConfig(
+                cache_dir=settings.CACHE_DIR,
+                discovery_ttl=settings.CACHE_DISCOVERY_TTL,
+                research_ttl=settings.CACHE_RESEARCH_TTL,
+                enabled=settings.CACHE_ENABLED,
+            )
+            _cache_instance = ResearchCache(config)
     return _cache_instance
 
 
 def reset_cache_instance():
     """Reset the singleton (for testing)."""
     global _cache_instance
-    _cache_instance = None
+    with _cache_lock:
+        _cache_instance = None
