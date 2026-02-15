@@ -5,6 +5,8 @@ Provides a browser-based interface for running property research.
 """
 import sys
 import copy
+import threading
+import queue
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
@@ -102,6 +104,9 @@ output_base.mkdir(exist_ok=True)
 # In-memory storage for active runs
 active_runs = {}
 completed_runs = {}
+active_runs_lock = threading.Lock()
+completed_runs_lock = threading.Lock()
+progress_queues: dict[str, queue.Queue] = {}
 
 # Thread pool for background tasks
 executor = ThreadPoolExecutor(max_workers=2)
@@ -127,90 +132,130 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
         run_id: Unique run identifier
         user_input: User input parameters
     """
+    # Create progress queue for this run
+    progress_queue = queue.Queue(maxsize=100)
+    progress_queues[run_id] = progress_queue
+
     try:
         # Update status
-        active_runs[run_id]["status"] = "running"
+        with active_runs_lock:
+            active_runs[run_id]["status"] = "running"
 
         def progress_callback(message: str):
-            """Append progress step to active run."""
-            if run_id in active_runs:
-                active_runs[run_id].setdefault("steps", []).append({
+            """Push progress message to queue."""
+            try:
+                progress_queue.put({
                     "message": message,
                     "timestamp": datetime.now().isoformat()
-                })
+                }, timeout=1)
+            except queue.Full:
+                pass  # Drop message if queue is full
 
         # Run pipeline
         result = run_research_pipeline(user_input, progress_callback=progress_callback)
 
+        # Get started_at timestamp before removing from active
+        with active_runs_lock:
+            started_at = active_runs[run_id]["started_at"]
+
         # Update completed runs
-        completed_runs[run_id] = {
-            "run_id": run_id,
-            "status": result.status,
-            "user_input": user_input.model_dump(),
-            "suburbs_count": len(result.suburbs),
-            "output_dir": str(result.output_dir) if result.output_dir else None,
-            "error_message": result.error_message,
-            "started_at": active_runs[run_id]["started_at"],
-            "completed_at": datetime.now().isoformat()
-        }
+        with completed_runs_lock:
+            completed_runs[run_id] = {
+                "run_id": run_id,
+                "status": result.status,
+                "user_input": user_input.model_dump(),
+                "suburbs_count": len(result.suburbs),
+                "output_dir": str(result.output_dir) if result.output_dir else None,
+                "error_message": result.error_message,
+                "started_at": started_at,
+                "completed_at": datetime.now().isoformat()
+            }
 
         # Remove from active
-        if run_id in active_runs:
-            del active_runs[run_id]
+        with active_runs_lock:
+            if run_id in active_runs:
+                del active_runs[run_id]
+
+        # Signal completion in progress queue
+        progress_queue.put(None)
 
     except API_CREDIT_AUTH_ERRORS as e:
         # Handle API credit/auth errors with specific messaging
         from security.sanitization import sanitize_text
         error_msg = sanitize_text(str(e))
-        completed_runs[run_id] = {
-            "run_id": run_id,
-            "status": "failed",
-            "user_input": user_input.model_dump(),
-            "suburbs_count": 0,
-            "output_dir": None,
-            "error_message": error_msg,
-            "started_at": active_runs[run_id]["started_at"],
-            "completed_at": datetime.now().isoformat()
-        }
 
-        if run_id in active_runs:
-            del active_runs[run_id]
+        with active_runs_lock:
+            started_at = active_runs[run_id]["started_at"]
+
+        with completed_runs_lock:
+            completed_runs[run_id] = {
+                "run_id": run_id,
+                "status": "failed",
+                "user_input": user_input.model_dump(),
+                "suburbs_count": 0,
+                "output_dir": None,
+                "error_message": error_msg,
+                "started_at": started_at,
+                "completed_at": datetime.now().isoformat()
+            }
+
+        with active_runs_lock:
+            if run_id in active_runs:
+                del active_runs[run_id]
+
+        progress_queue.put(None)
 
     except API_GENERAL_ERRORS as e:
         # Handle general API errors
         from security.sanitization import sanitize_text
         error_msg = sanitize_text(f"API Error: {str(e)}")
-        completed_runs[run_id] = {
-            "run_id": run_id,
-            "status": "failed",
-            "user_input": user_input.model_dump(),
-            "suburbs_count": 0,
-            "output_dir": None,
-            "error_message": error_msg,
-            "started_at": active_runs[run_id]["started_at"],
-            "completed_at": datetime.now().isoformat()
-        }
 
-        if run_id in active_runs:
-            del active_runs[run_id]
+        with active_runs_lock:
+            started_at = active_runs[run_id]["started_at"]
+
+        with completed_runs_lock:
+            completed_runs[run_id] = {
+                "run_id": run_id,
+                "status": "failed",
+                "user_input": user_input.model_dump(),
+                "suburbs_count": 0,
+                "output_dir": None,
+                "error_message": error_msg,
+                "started_at": started_at,
+                "completed_at": datetime.now().isoformat()
+            }
+
+        with active_runs_lock:
+            if run_id in active_runs:
+                del active_runs[run_id]
+
+        progress_queue.put(None)
 
     except Exception as e:
         # Handle other errors
         from security.sanitization import sanitize_text
         error_msg = sanitize_text(str(e))
-        completed_runs[run_id] = {
-            "run_id": run_id,
-            "status": "failed",
-            "user_input": user_input.model_dump(),
-            "suburbs_count": 0,
-            "output_dir": None,
-            "error_message": error_msg,
-            "started_at": active_runs[run_id]["started_at"],
-            "completed_at": datetime.now().isoformat()
-        }
 
-        if run_id in active_runs:
-            del active_runs[run_id]
+        with active_runs_lock:
+            started_at = active_runs[run_id]["started_at"]
+
+        with completed_runs_lock:
+            completed_runs[run_id] = {
+                "run_id": run_id,
+                "status": "failed",
+                "user_input": user_input.model_dump(),
+                "suburbs_count": 0,
+                "output_dir": None,
+                "error_message": error_msg,
+                "started_at": started_at,
+                "completed_at": datetime.now().isoformat()
+            }
+
+        with active_runs_lock:
+            if run_id in active_runs:
+                del active_runs[run_id]
+
+        progress_queue.put(None)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -257,13 +302,14 @@ async def start_run(
     )
 
     # Add to active runs
-    active_runs[run_id] = {
-        "run_id": run_id,
-        "status": "starting",
-        "user_input": user_input.model_dump(),
-        "started_at": datetime.now().isoformat(),
-        "steps": []
-    }
+    with active_runs_lock:
+        active_runs[run_id] = {
+            "run_id": run_id,
+            "status": "starting",
+            "user_input": user_input.model_dump(),
+            "started_at": datetime.now().isoformat(),
+            "steps": []
+        }
 
     # Start background task
     background_tasks.add_task(run_pipeline_background, run_id, user_input)
@@ -276,15 +322,21 @@ async def start_run(
 async def run_status(request: Request, run_id: str):
     """Show status of a research run."""
     # Check if run exists
-    if run_id in active_runs:
-        status = active_runs[run_id]
-    elif run_id in completed_runs:
-        status = completed_runs[run_id]
-    else:
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "error": f"Run {run_id} not found"}
-        )
+    with active_runs_lock:
+        if run_id in active_runs:
+            status = copy.deepcopy(active_runs[run_id])
+        else:
+            status = None
+
+    if status is None:
+        with completed_runs_lock:
+            if run_id in completed_runs:
+                status = completed_runs[run_id]
+            else:
+                return templates.TemplateResponse(
+                    "error.html",
+                    {"request": request, "error": f"Run {run_id} not found"}
+                )
 
     return templates.TemplateResponse(
         "run_status.html",
@@ -295,13 +347,18 @@ async def run_status(request: Request, run_id: str):
 @app.get("/api/status/{run_id}")
 async def api_run_status(run_id: str):
     """API endpoint for run status (for AJAX polling)."""
-    if run_id in active_runs:
-        # Return a snapshot copy to avoid thread-safety issues
-        data = copy.deepcopy(active_runs[run_id])
-    elif run_id in completed_runs:
-        data = completed_runs[run_id]
-    else:
-        data = {"error": "Run not found"}
+    with active_runs_lock:
+        if run_id in active_runs:
+            data = copy.deepcopy(active_runs[run_id])
+        else:
+            data = None
+
+    if data is None:
+        with completed_runs_lock:
+            if run_id in completed_runs:
+                data = copy.deepcopy(completed_runs[run_id])
+            else:
+                data = {"error": "Run not found"}
 
     return JSONResponse(
         content=data,
@@ -325,9 +382,12 @@ async def list_runs(request: Request):
                         "created": datetime.fromtimestamp(run_dir.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
                     })
 
+    with active_runs_lock:
+        active_runs_snapshot = copy.deepcopy(active_runs)
+
     return templates.TemplateResponse(
         "runs_list.html",
-        {"request": request, "runs": runs, "active_runs": active_runs}
+        {"request": request, "runs": runs, "active_runs": active_runs_snapshot}
     )
 
 
@@ -486,18 +546,46 @@ async def cache_clear():
     return {"cleared": count}
 
 
+@app.get("/api/progress/{run_id}")
+async def api_run_progress(run_id: str):
+    """API endpoint for progress updates (for Phase 4 SSE streaming)."""
+    progress_queue = progress_queues.get(run_id)
+    if not progress_queue:
+        return JSONResponse(content={"progress": [], "done": True})
+
+    messages = []
+    done = False
+    try:
+        while True:
+            msg = progress_queue.get_nowait()
+            if msg is None:
+                done = True
+                break
+            messages.append(msg)
+    except queue.Empty:
+        pass
+
+    return JSONResponse(content={"progress": messages, "done": done})
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     from research.cache import get_cache
     cache = get_cache()
     cache_info = cache.stats()
+
+    with active_runs_lock:
+        active_count = len(active_runs)
+    with completed_runs_lock:
+        completed_count = len(completed_runs)
+
     return {
         "status": "healthy",
         "available_providers": settings.AVAILABLE_PROVIDERS,
         "default_provider": settings.DEFAULT_PROVIDER,
-        "active_runs": len(active_runs),
-        "completed_runs": len(completed_runs),
+        "active_runs": active_count,
+        "completed_runs": completed_count,
         "cache_entries": cache_info["total_entries"],
     }
 
