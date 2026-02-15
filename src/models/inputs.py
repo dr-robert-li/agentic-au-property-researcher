@@ -17,13 +17,21 @@ class UserInput(BaseModel):
     interface_mode: Literal["gui", "cli"] = Field(default="gui", description="Interface mode used")
     run_id: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), description="Unique run identifier")
 
+    @field_validator("run_id")
+    @classmethod
+    def validate_run_id_field(cls, v):
+        """Validate run_id against safe character pattern."""
+        from security.validators import validate_run_id
+        return validate_run_id(v)
+
     @field_validator("regions")
     @classmethod
-    def validate_regions(cls, v):
-        """Ensure at least one region is selected."""
+    def validate_regions_field(cls, v):
+        """Validate regions against whitelist with case normalization."""
+        from security.validators import validate_regions
         if not v:
             return ["All Australia"]
-        return v
+        return validate_regions(v)
 
     @field_validator("num_suburbs")
     @classmethod

@@ -162,35 +162,41 @@ def run_research_pipeline(
 
     except API_CREDIT_AUTH_ERRORS as e:
         # Handle API credit/auth errors with specific messaging
+        from security.sanitization import sanitize_text
+        sanitized_message = sanitize_text(str(e))
         print(f"\n\n{'='*80}")
-        print(str(e))
+        print(sanitized_message)
         print(f"{'='*80}\n")
         run_result.status = "failed"
-        run_result.error_message = str(e)
+        run_result.error_message = sanitized_message
         return run_result
 
     except API_GENERAL_ERRORS as e:
         # Handle general API errors
+        from security.sanitization import sanitize_text
+        sanitized_message = sanitize_text(str(e))
         print(f"\n\n{'='*80}")
         print(f"❌ API ERROR")
         print(f"{'='*80}")
-        print(str(e))
+        print(sanitized_message)
         print(f"{'='*80}\n")
         run_result.status = "failed"
-        run_result.error_message = str(e)
+        run_result.error_message = sanitized_message
         return run_result
 
     except Exception as e:
+        from security.sanitization import sanitize_text
+        sanitized_message = sanitize_text(str(e))
         print(f"\n\n{'='*80}")
         print(f"❌ PIPELINE FAILED")
         print(f"{'='*80}")
-        print(f"Error: {e}")
+        print(f"Error: {sanitized_message}")
         import traceback
         print("\nFull traceback:")
         traceback.print_exc()
         print(f"{'='*80}\n")
         run_result.status = "failed"
-        run_result.error_message = str(e)
+        run_result.error_message = sanitized_message
         return run_result
 
 

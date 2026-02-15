@@ -45,6 +45,32 @@ app = FastAPI(
     version="1.4.0"
 )
 
+
+# Global exception handler to sanitize all error responses
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and sanitize before responding."""
+    from security.sanitization import sanitize_text
+    import logging
+    import traceback
+
+    # Log the full sanitized traceback
+    logger = logging.getLogger(__name__)
+    logger.error(f"Unhandled exception: {sanitize_text(str(exc))}")
+    logger.error(traceback.format_exc())
+
+    # Sanitize error message before including in HTTP response
+    sanitized_msg = sanitize_text(str(exc))
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": sanitized_msg,
+            "error_code": getattr(exc, "error_code", "UNKNOWN")
+        }
+    )
+
 # Templates directory
 template_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(template_dir))
@@ -119,7 +145,8 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
 
     except API_CREDIT_AUTH_ERRORS as e:
         # Handle API credit/auth errors with specific messaging
-        error_msg = str(e)
+        from security.sanitization import sanitize_text
+        error_msg = sanitize_text(str(e))
         completed_runs[run_id] = {
             "run_id": run_id,
             "status": "failed",
@@ -136,7 +163,8 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
 
     except API_GENERAL_ERRORS as e:
         # Handle general API errors
-        error_msg = f"API Error: {str(e)}"
+        from security.sanitization import sanitize_text
+        error_msg = sanitize_text(f"API Error: {str(e)}")
         completed_runs[run_id] = {
             "run_id": run_id,
             "status": "failed",
@@ -153,13 +181,15 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
 
     except Exception as e:
         # Handle other errors
+        from security.sanitization import sanitize_text
+        error_msg = sanitize_text(str(e))
         completed_runs[run_id] = {
             "run_id": run_id,
             "status": "failed",
             "user_input": user_input.model_dump(),
             "suburbs_count": 0,
             "output_dir": None,
-            "error_message": str(e),
+            "error_message": error_msg,
             "started_at": active_runs[run_id]["started_at"],
             "completed_at": datetime.now().isoformat()
         }
