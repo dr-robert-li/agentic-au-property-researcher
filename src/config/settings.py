@@ -131,10 +131,32 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 
 # Parallel execution settings
-DISCOVERY_MAX_WORKERS = int(os.getenv("DISCOVERY_MAX_WORKERS", "4"))
-RESEARCH_MAX_WORKERS = int(os.getenv("RESEARCH_MAX_WORKERS", "3"))
+# Adaptive worker scaling with fallback to hardcoded defaults if dependencies fail
+try:
+    from src.config.worker_scaling import calculate_worker_counts
+
+    # Parse environment overrides (None if not set, int if set)
+    _discovery_override = int(os.getenv("DISCOVERY_MAX_WORKERS")) if os.getenv("DISCOVERY_MAX_WORKERS") else None
+    _research_override = int(os.getenv("RESEARCH_MAX_WORKERS")) if os.getenv("RESEARCH_MAX_WORKERS") else None
+
+    DISCOVERY_MAX_WORKERS, RESEARCH_MAX_WORKERS = calculate_worker_counts(
+        override_discovery=_discovery_override,
+        override_research=_research_override,
+    )
+except (ImportError, Exception) as e:
+    # Fallback to safe defaults if worker_scaling or dependencies fail
+    import logging
+    logging.warning(f"Failed to load adaptive worker scaling, using defaults: {e}")
+    DISCOVERY_MAX_WORKERS = int(os.getenv("DISCOVERY_MAX_WORKERS", "4"))
+    RESEARCH_MAX_WORKERS = int(os.getenv("RESEARCH_MAX_WORKERS", "3"))
+
 DISCOVERY_TIMEOUT = int(os.getenv("DISCOVERY_TIMEOUT", "120"))   # 2 min per region
 RESEARCH_TIMEOUT = int(os.getenv("RESEARCH_TIMEOUT", "240"))     # 4 min per suburb
+
+# Pipeline multipliers: how many extra candidates to discover/research beyond what user requested
+# Reduced from 5/3 to 2.0/1.5 per PERF-04: eliminates 60-80% of wasteful API calls
+DISCOVERY_MULTIPLIER = float(os.getenv("DISCOVERY_MULTIPLIER", "2.0"))  # Down from 5
+RESEARCH_MULTIPLIER = float(os.getenv("RESEARCH_MULTIPLIER", "1.5"))    # Down from 3
 
 # Cache Configuration
 CACHE_DIR = BASE_DIR / "cache"
@@ -144,3 +166,12 @@ CACHE_RESEARCH_TTL = int(os.getenv("CACHE_RESEARCH_TTL", "604800"))  # 7 days
 CACHE_MAX_SIZE_MB = int(os.getenv("CACHE_MAX_SIZE_MB", "500"))  # 500 MB default
 CHECKPOINT_DIR = BASE_DIR / "checkpoints"
 CHECKPOINT_DIR.mkdir(exist_ok=True)
+
+# Ranking quality weights
+RANKING_QUALITY_WEIGHTS = {
+    "high": float(os.getenv("QUALITY_WEIGHT_HIGH", "1.0")),
+    "medium": float(os.getenv("QUALITY_WEIGHT_MEDIUM", "0.95")),
+    "low": float(os.getenv("QUALITY_WEIGHT_LOW", "0.85")),
+    "fallback": float(os.getenv("QUALITY_WEIGHT_FALLBACK", "0.70")),
+}
+DEFAULT_RANKING_METHOD = os.getenv("DEFAULT_RANKING_METHOD", "quality_adjusted")

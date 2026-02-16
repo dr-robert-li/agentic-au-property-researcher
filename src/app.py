@@ -107,7 +107,7 @@ def run_research_pipeline(
             _progress(f"Discovering suburbs matching criteria (targeting {user_input.num_suburbs} suburbs)...", 0)
             candidates = parallel_discover_suburbs(
                 user_input,
-                max_results=user_input.num_suburbs * 5,
+                max_results=int(user_input.num_suburbs * settings.DISCOVERY_MULTIPLIER),
                 progress_callback=progress_callback,
             )
 
@@ -133,7 +133,7 @@ def run_research_pipeline(
         # Step 2: Detailed research
         print("\n🔬 STEP 2: DETAILED RESEARCH")
         print("-" * 80)
-        research_count = min(len(candidates), user_input.num_suburbs * 3)
+        research_count = min(len(candidates), int(user_input.num_suburbs * settings.RESEARCH_MULTIPLIER))
 
         # Filter out completed suburbs if resuming
         if completed_suburbs:
