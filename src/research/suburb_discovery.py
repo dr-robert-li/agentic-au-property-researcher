@@ -57,6 +57,19 @@ class SuburbCandidate:
     def __repr__(self):
         return f"SuburbCandidate({self.name}, {self.state}, ${self.median_price:,.0f})"
 
+    def to_dict(self) -> dict:
+        """Convert to dictionary for checkpoint serialization."""
+        return {
+            "name": self.name,
+            "state": self.state,
+            "lga": self.lga,
+            "region": self.region,
+            "median_price": self.median_price,
+            "growth_signals": self.growth_signals,
+            "major_events_relevance": self.major_events_relevance,
+            "data_quality": self.data_quality
+        }
+
 
 def discover_suburbs(
     user_input: UserInput,
