@@ -5,10 +5,46 @@ from typing import Optional, Literal
 from models.suburb_metrics import SuburbMetrics
 from models.run_result import SuburbReport
 
+try:
+    from config import settings
+except ImportError:
+    settings = None
+
+# Default quality weights if settings not available
+_DEFAULT_QUALITY_WEIGHTS = {
+    "high": 1.0,
+    "medium": 0.95,
+    "low": 0.85,
+    "fallback": 0.70
+}
+
+
+def calculate_quality_adjusted_score(metrics: SuburbMetrics) -> float:
+    """
+    Apply quality penalty to composite score.
+
+    Args:
+        metrics: SuburbMetrics object with data_quality field
+
+    Returns:
+        Quality-adjusted composite score
+    """
+    base_score = metrics.growth_projections.composite_score
+
+    # Get quality weights from settings or use defaults
+    if settings and hasattr(settings, 'RANKING_QUALITY_WEIGHTS'):
+        weights = settings.RANKING_QUALITY_WEIGHTS
+    else:
+        weights = _DEFAULT_QUALITY_WEIGHTS
+
+    # Apply quality weight
+    weight = weights.get(metrics.data_quality, 0.95)
+    return base_score * weight
+
 
 def rank_suburbs(
     metrics_list: list[SuburbMetrics],
-    ranking_method: Literal["growth_score", "composite_score", "5yr_growth"] = "composite_score",
+    ranking_method: Literal["growth_score", "composite_score", "5yr_growth", "quality_adjusted"] = "quality_adjusted",
     top_n: Optional[int] = None
 ) -> list[SuburbReport]:
     """
@@ -18,8 +54,9 @@ def rank_suburbs(
         metrics_list: List of SuburbMetrics to rank
         ranking_method: Method to use for ranking
             - "growth_score": Rank by raw growth potential
-            - "composite_score": Rank by growth adjusted for risk (default)
+            - "composite_score": Rank by growth adjusted for risk
             - "5yr_growth": Rank by 5-year projected growth percentage
+            - "quality_adjusted": Rank by quality-adjusted composite score (default)
         top_n: Return only top N suburbs (None = all)
 
     Returns:
@@ -36,8 +73,10 @@ def rank_suburbs(
         reports.sort(key=lambda r: r.metrics.growth_projections.growth_score, reverse=True)
     elif ranking_method == "5yr_growth":
         reports.sort(key=lambda r: r.metrics.growth_projections.projected_growth_pct.get(5, 0), reverse=True)
-    else:  # composite_score (default)
+    elif ranking_method == "composite_score":
         reports.sort(key=lambda r: r.metrics.growth_projections.composite_score, reverse=True)
+    else:  # quality_adjusted (default)
+        reports.sort(key=lambda r: calculate_quality_adjusted_score(r.metrics), reverse=True)
 
     # Assign rankings
     for i, report in enumerate(reports, 1):

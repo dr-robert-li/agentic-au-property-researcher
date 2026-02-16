@@ -131,6 +131,13 @@ RETURN ONLY VALID JSON IN THIS EXACT STRUCTURE (no additional text):
     "growth_score": 0.0,
     "risk_score": 0.0,
     "composite_score": 0.0
+  }},
+  "data_quality": "high|medium|low|fallback",
+  "data_quality_details": {{
+    "median_price": "high|medium|low|fallback",
+    "demographics": "high|medium|low|fallback",
+    "infrastructure": "high|medium|low|fallback",
+    "crime_stats": "high|medium|low|fallback"
   }}
 }}
 
@@ -145,6 +152,12 @@ CRITICAL INSTRUCTIONS:
 8. For composite_score: Growth score adjusted for risk (higher growth + lower risk = higher score)
 9. Include all available transport, infrastructure, and amenity information
 10. Research major events relevance (Brisbane 2032 Olympics, infrastructure projects, etc.)
+11. Set data_quality based on source reliability:
+    - "high": Official sources (ABS, CoreLogic, Domain, REA Group, government)
+    - "medium": Mixed sources, some third-party data
+    - "low": Mostly estimates or outdated data
+    - "fallback": Calculated/interpolated when direct data unavailable
+12. Provide data_quality_details for key fields showing which data came from which quality sources
 
 Focus on {dwelling_type} properties. Be thorough and accurate.
 
@@ -329,6 +342,10 @@ def _parse_metrics_from_json(data: dict) -> SuburbMetrics:
         logger.warning("Failed to parse growth_projections: %s", e)
         growth_projections = GrowthProjections()
 
+    # Parse data quality fields
+    data_quality = data.get("data_quality", "medium")
+    data_quality_details = data.get("data_quality_details", {})
+
     # Create and return SuburbMetrics
     return SuburbMetrics(
         identification=identification,
@@ -337,7 +354,9 @@ def _parse_metrics_from_json(data: dict) -> SuburbMetrics:
         physical_config=physical_config,
         demographics=demographics,
         infrastructure=infrastructure,
-        growth_projections=growth_projections
+        growth_projections=growth_projections,
+        data_quality=data_quality,
+        data_quality_details=data_quality_details
     )
 
 
@@ -370,7 +389,9 @@ def _create_fallback_metrics(candidate: SuburbCandidate) -> SuburbMetrics:
         ),
         infrastructure=Infrastructure(
             major_events_relevance=candidate.major_events_relevance
-        )
+        ),
+        data_quality="fallback",
+        data_quality_details={"all_fields": "fallback"}
     )
 
 

@@ -2,7 +2,7 @@
 Suburb metrics and data models.
 """
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TimePoint(BaseModel):
@@ -89,6 +89,24 @@ class SuburbMetrics(BaseModel):
     demographics: Demographics = Field(default_factory=Demographics)
     infrastructure: Infrastructure = Field(default_factory=Infrastructure)
     growth_projections: GrowthProjections = Field(default_factory=GrowthProjections)
+    data_quality: str = Field(
+        default="medium",
+        description="Overall data quality: high, medium, low, or fallback"
+    )
+    data_quality_details: dict = Field(
+        default_factory=dict,
+        description="Per-field quality indicators, e.g. {'median_price': 'high', 'demographics': 'fallback'}"
+    )
+
+    @field_validator('data_quality')
+    @classmethod
+    def normalize_data_quality(cls, v: str) -> str:
+        """Normalize data_quality to one of the accepted values."""
+        valid_values = ["high", "medium", "low", "fallback"]
+        v_lower = v.lower() if v else "medium"
+        if v_lower in valid_values:
+            return v_lower
+        return "medium"
 
     def get_display_name(self) -> str:
         """Get formatted display name for the suburb."""
