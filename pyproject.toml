@@ -1,0 +1,24 @@
+[tool.pytest.ini_options]
+markers = [
+    "unit: Fast unit tests with no external dependencies",
+    "integration: Integration tests spanning multiple components",
+    "asyncio: Async tests using pytest-asyncio",
+    "concurrent: Thread safety and race condition tests",
+    "slow: Tests that take > 5 seconds",
+]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--strict-markers --tb=short -q"
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/__pycache__/*", "*/ui/web/templates/*", "*/ui/web/static/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.",
+]
