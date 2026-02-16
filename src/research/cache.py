@@ -9,6 +9,8 @@ import hashlib
 import json
 import logging
 import os
+import shutil
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field, asdict
@@ -18,6 +20,76 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def atomic_write_json(target_path: Path, data: dict):
+    """
+    Atomically write JSON data to a file using temp file + rename pattern.
+
+    Ensures that writes are durable (fsync) and atomic (os.replace).
+    If process crashes during write, the target file is either complete
+    or unchanged (never corrupted).
+
+    Args:
+        target_path: Destination file path
+        data: Dictionary to serialize as JSON
+
+    Raises:
+        CacheError: If write operation fails
+    """
+    from security.exceptions import CacheError
+
+    parent_dir = target_path.parent
+    tmp_file = None
+    tmp_path = None
+
+    try:
+        # Create temp file in same directory as target (ensures same filesystem)
+        tmp_file = tempfile.NamedTemporaryFile(
+            mode='w',
+            dir=parent_dir,
+            delete=False,
+            prefix='.tmp_',
+            suffix='.tmp'
+        )
+        tmp_path = Path(tmp_file.name)
+
+        # Write JSON content
+        json.dump(data, tmp_file, indent=2)
+        tmp_file.flush()
+
+        # Force write to disk (durability)
+        os.fsync(tmp_file.fileno())
+        tmp_file.close()
+
+        # Atomic rename (POSIX guarantees atomicity)
+        os.replace(tmp_path, target_path)
+
+        # On POSIX, fsync the parent directory to ensure rename is durable
+        if os.name != 'nt':  # Not Windows
+            try:
+                parent_fd = os.open(parent_dir, os.O_RDONLY)
+                try:
+                    os.fsync(parent_fd)
+                finally:
+                    os.close(parent_fd)
+            except (OSError, AttributeError):
+                # If directory fsync fails (e.g., not supported), continue
+                # The file write itself was still atomic
+                pass
+
+    except (OSError, IOError) as e:
+        # Clean up temp file on failure
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        raise CacheError(
+            message=f"Failed to write cache file {target_path}: {e}",
+            operation="write",
+            is_transient=True
+        )
+
+
 @dataclass
 class CacheConfig:
     """Configuration for the research cache."""
@@ -25,6 +97,7 @@ class CacheConfig:
     discovery_ttl: int = 86400      # 24 hours
     research_ttl: int = 604800      # 7 days
     enabled: bool = True
+    max_size_bytes: int = 500 * 1024 * 1024  # 500 MB default
 
 
 @dataclass
@@ -36,6 +109,8 @@ class CacheEntry:
     ttl_seconds: int
     cache_type: str  # "discovery" or "research"
     key_parts: dict = field(default_factory=dict)
+    size_bytes: int = 0
+    last_accessed: float = 0.0
 
 
 class ResearchCache:
@@ -51,7 +126,9 @@ class ResearchCache:
     def __init__(self, config: CacheConfig):
         self.config = config
         self._lock = threading.RLock()
+        self._last_orphan_cleanup_count = 0
         self._ensure_dir()
+        self._cleanup_orphans()
 
     def _ensure_dir(self):
         """Create cache directory if it doesn't exist."""
@@ -61,29 +138,160 @@ class ResearchCache:
         return self.config.cache_dir / self.INDEX_FILE
 
     def _load_index(self) -> dict:
-        """Load the cache index from disk."""
+        """Load the cache index from disk, with backup recovery."""
         path = self._index_path()
-        if not path.exists():
-            return {}
-        try:
-            with open(path, "r") as f:
-                raw = json.load(f)
-            # Convert raw dicts back to CacheEntry objects
-            index = {}
-            for key, entry_data in raw.items():
-                index[key] = CacheEntry(**entry_data)
-            return index
-        except (json.JSONDecodeError, TypeError, KeyError) as e:
-            logger.warning("Corrupt cache index, resetting: %s", e)
-            return {}
+        backup_path = Path(str(path) + '.backup')
+
+        # Try loading main index
+        if path.exists():
+            try:
+                with open(path, "r") as f:
+                    raw = json.load(f)
+                # Convert raw dicts back to CacheEntry objects
+                index = {}
+                for key, entry_data in raw.items():
+                    index[key] = CacheEntry(**entry_data)
+                return index
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                logger.warning(f"Cache index corrupted: {e}")
+                # Fall through to backup recovery
+
+        # Try loading backup index
+        if backup_path.exists():
+            try:
+                with open(backup_path, "r") as f:
+                    raw = json.load(f)
+                index = {}
+                for key, entry_data in raw.items():
+                    index[key] = CacheEntry(**entry_data)
+
+                logger.info(f"Restoring from backup index... ({len(index)} entries recovered)")
+                # Copy backup over main
+                shutil.copy2(backup_path, path)
+                return index
+            except (json.JSONDecodeError, TypeError, KeyError, OSError) as e:
+                logger.warning(f"Backup index also corrupted: {e}")
+
+        # Both failed, start fresh
+        logger.info("Starting with empty cache index")
+        return {}
 
     def _save_index(self, index: dict):
-        """Save the cache index to disk."""
+        """Save the cache index to disk with backup."""
         raw = {}
         for key, entry in index.items():
             raw[key] = asdict(entry)
-        with open(self._index_path(), "w") as f:
-            json.dump(raw, f, indent=2)
+
+        # Atomic write of main index
+        atomic_write_json(self._index_path(), raw)
+
+        # Create backup after successful write
+        backup_path = Path(str(self._index_path()) + '.backup')
+        try:
+            shutil.copy2(self._index_path(), backup_path)
+        except OSError as e:
+            logger.warning(f"Failed to create backup index: {e}")
+
+    def _cleanup_orphans(self):
+        """Remove cache files not referenced in the index."""
+        with self._lock:
+            index = self._load_index()
+            indexed_files = {entry.filepath for entry in index.values()}
+
+            # Protected files that should never be deleted
+            protected = {
+                self.INDEX_FILE,
+                self.INDEX_FILE + '.backup',
+            }
+
+            orphan_count = 0
+            cache_dir = self.config.cache_dir
+
+            # Find all cache data files
+            for pattern in ['discovery_*.json', 'research_*.json']:
+                for file_path in cache_dir.glob(pattern):
+                    filename = file_path.name
+
+                    # Skip if protected or indexed
+                    if filename in protected or filename in indexed_files:
+                        continue
+
+                    # Delete orphan
+                    try:
+                        file_path.unlink()
+                        logger.info(f"Deleted orphan cache file: {filename}")
+                        orphan_count += 1
+                    except OSError as e:
+                        logger.warning(f"Failed to delete orphan {filename}: {e}")
+
+            # Also clean up any .tmp_ files from failed writes
+            for tmp_file in cache_dir.glob('.tmp_*'):
+                try:
+                    tmp_file.unlink()
+                    logger.debug(f"Deleted temp file: {tmp_file.name}")
+                except OSError:
+                    pass
+
+            self._last_orphan_cleanup_count = orphan_count
+            if orphan_count > 0:
+                logger.info(f"Cleaned up {orphan_count} orphaned cache files")
+
+    def _enforce_size_limit(self, new_entry_size: int):
+        """
+        Enforce cache size limit by evicting LRU entries.
+
+        Args:
+            new_entry_size: Size of entry about to be added
+        """
+        from config import settings
+
+        max_size_bytes = settings.CACHE_MAX_SIZE_MB * 1024 * 1024
+
+        # No limit if configured to 0 or negative
+        if max_size_bytes <= 0:
+            return
+
+        with self._lock:
+            index = self._load_index()
+
+            # Calculate current total size
+            total_size = sum(entry.size_bytes for entry in index.values())
+
+            # If we're under limit, done
+            if total_size + new_entry_size <= max_size_bytes:
+                return
+
+            # Need to evict - sort by last_accessed (LRU first)
+            entries_by_lru = sorted(
+                index.items(),
+                key=lambda item: item[1].last_accessed
+            )
+
+            # Evict until under limit
+            for key_hash, entry in entries_by_lru:
+                # Delete file
+                data_path = self.config.cache_dir / entry.filepath
+                if data_path.exists():
+                    try:
+                        data_path.unlink()
+                        logger.info(
+                            f"Evicted cache entry: {entry.filepath} "
+                            f"({entry.size_bytes} bytes, LRU age: "
+                            f"{time.time() - entry.last_accessed:.0f}s)"
+                        )
+                    except OSError as e:
+                        logger.warning(f"Failed to delete {entry.filepath}: {e}")
+
+                # Remove from index
+                del index[key_hash]
+                total_size -= entry.size_bytes
+
+                # Check if we're under limit now
+                if total_size + new_entry_size <= max_size_bytes:
+                    break
+
+            # Save updated index
+            self._save_index(index)
 
     @staticmethod
     def _make_key(cache_type: str, **parts) -> str:
@@ -147,7 +355,14 @@ class ResearchCache:
 
             try:
                 with open(data_path, "r") as f:
-                    return json.load(f)
+                    data = json.load(f)
+
+                # Update last accessed time
+                entry.last_accessed = time.time()
+                index[key_hash] = entry
+                self._save_index(index)
+
+                return data
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to read cache file %s: %s", data_path, e)
                 self._remove_entry(key_hash, entry, index)
@@ -170,9 +385,14 @@ class ResearchCache:
             filename = f"{cache_type}_{key_hash}.json"
             data_path = self.config.cache_dir / filename
 
-            # Write data file
-            with open(data_path, "w") as f:
-                json.dump(data, f, indent=2)
+            # Write data file atomically
+            atomic_write_json(data_path, data)
+
+            # Get file size
+            file_size = data_path.stat().st_size
+
+            # Enforce size limit BEFORE adding to index
+            self._enforce_size_limit(file_size)
 
             # Update index
             entry = CacheEntry(
@@ -182,6 +402,8 @@ class ResearchCache:
                 ttl_seconds=self._get_ttl(cache_type),
                 cache_type=cache_type,
                 key_parts=key_parts,
+                size_bytes=file_size,
+                last_accessed=time.time(),
             )
 
             index = self._load_index()
@@ -242,7 +464,8 @@ class ResearchCache:
 
         Returns:
             Dict with discovery_count, research_count, total_size_bytes,
-            expired_count, oldest_timestamp, newest_timestamp
+            expired_count, oldest_timestamp, newest_timestamp, max_size_bytes,
+            orphans_cleaned_last_startup
         """
         with self._lock:
             index = self._load_index()
@@ -263,9 +486,14 @@ class ResearchCache:
                 if self._is_expired(entry):
                     expired_count += 1
 
-                data_path = self.config.cache_dir / entry.filepath
-                if data_path.exists():
-                    total_size += data_path.stat().st_size
+                # Use entry.size_bytes if available, else stat the file
+                if entry.size_bytes > 0:
+                    total_size += entry.size_bytes
+                else:
+                    # Backward compat for old entries without size_bytes
+                    data_path = self.config.cache_dir / entry.filepath
+                    if data_path.exists():
+                        total_size += data_path.stat().st_size
 
                 if oldest is None or entry.created_at < oldest:
                     oldest = entry.created_at
@@ -281,6 +509,8 @@ class ResearchCache:
                 "oldest_timestamp": oldest,
                 "newest_timestamp": newest,
                 "enabled": self.config.enabled,
+                "max_size_bytes": self.config.max_size_bytes,
+                "orphans_cleaned_last_startup": self._last_orphan_cleanup_count,
             }
 
     def _remove_entry(self, key_hash: str, entry: CacheEntry, index: dict):
@@ -313,6 +543,7 @@ def get_cache() -> ResearchCache:
                 discovery_ttl=settings.CACHE_DISCOVERY_TTL,
                 research_ttl=settings.CACHE_RESEARCH_TTL,
                 enabled=settings.CACHE_ENABLED,
+                max_size_bytes=settings.CACHE_MAX_SIZE_MB * 1024 * 1024,
             )
             _cache_instance = ResearchCache(config)
     return _cache_instance
