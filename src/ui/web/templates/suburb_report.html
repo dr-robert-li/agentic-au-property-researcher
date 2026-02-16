@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}{{ suburb.identification.name }}, {{ suburb.identification.state }} - Property Report{% endblock %}
+
+{% block content %}
+<!-- Suburb Header -->
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 style="font-size: 2.5em; margin-bottom: 5px;">{{ suburb.identification.name }}, {{ suburb.identification.state }}</h2>
+            <p style="font-size: 1.2em; color: #6c757d;">
+                {{ suburb.identification.lga }} | {{ suburb.identification.region }}
+            </p>
+        </div>
+        <div>
+            <span class="badge badge-rank" style="font-size: 1.5em;">Rank #{{ rank }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Data Quality Warning -->
+{% if suburb.data_quality in ['low', 'fallback'] %}
+<div class="data-quality-warning" style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 6px; margin: 20px 0;">
+    <h3 style="color: #856404; margin-top: 0;">Data Quality Notice</h3>
+    <p>
+        This report contains <strong>{{ suburb.data_quality }}</strong> quality data.
+        {% if suburb.data_quality == 'fallback' %}
+        Some metrics are calculated estimates due to limited official data availability.
+        {% else %}
+        Some metrics are based on estimates or older data sources.
+        {% endif %}
+    </p>
+    {% if suburb.data_quality_details %}
+    <details style="margin-top: 10px;">
+        <summary style="cursor: pointer; font-weight: 600;">View field-level quality details</summary>
+        <ul style="margin-top: 10px;">
+            {% for field, quality in suburb.data_quality_details.items() %}
+            {% if quality in ['low', 'fallback'] %}
+            <li><strong>{{ field }}</strong>: {{ quality }}</li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Key Metrics -->
+<div class="card">
+    <h2>Investment Summary</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Median Price</div>
+            <div class="stat-value">${{ '{:,.0f}'.format(suburb.market_current.median_price) }}</div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--success-color);">
+            <div class="stat-label">5-Year Growth</div>
+            <div class="stat-value growth-positive">{{ '{:.1f}'.format(suburb.growth_projections.projected_growth_pct.get(5, 0)) }}%</div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--secondary-color);">
+            <div class="stat-label">Growth Score</div>
+            <div class="stat-value" style="color: var(--secondary-color);">{{ '{:.1f}'.format(suburb.growth_projections.growth_score) }}/100</div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--accent-color);">
+            <div class="stat-label">Risk Score</div>
+            <div class="stat-value" style="color: var(--accent-color);">{{ '{:.1f}'.format(suburb.growth_projections.risk_score) }}/100</div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--primary-color);">
+            <div class="stat-label">Composite Score</div>
+            <div class="stat-value" style="color: var(--primary-color);">{{ '{:.1f}'.format(suburb.growth_projections.composite_score) }}/100</div>
+        </div>
+        {% if suburb.market_current.rental_yield_current %}
+        <div class="stat-card">
+            <div class="stat-label">Rental Yield</div>
+            <div class="stat-value">{{ '{:.1f}'.format(suburb.market_current.rental_yield_current * 100) }}%</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Growth Projections -->
+<div class="card">
+    <h2>Growth Projections</h2>
+    <h3>Projected Price Appreciation</h3>
+    <table style="margin-bottom: 30px;">
+        <thead>
+            <tr>
+                <th>Time Horizon</th>
+                <th>Projected Growth</th>
+                <th>Estimated Price</th>
+                <th>Confidence Range</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for years in [1, 2, 3, 5, 10, 25] %}
+            <tr>
+                <td><strong>{{ years }} Year{{ 's' if years > 1 else '' }}</strong></td>
+                <td class="growth-positive">{{ '{:.1f}'.format(suburb.growth_projections.projected_growth_pct.get(years, 0)) }}%</td>
+                <td>${{ '{:,.0f}'.format(suburb.market_current.median_price * (1 + suburb.growth_projections.projected_growth_pct.get(years, 0) / 100)) }}</td>
+                <td>
+                    {% if years in suburb.growth_projections.confidence_intervals %}
+                    {{ '{:.1f}'.format(suburb.growth_projections.confidence_intervals[years][0]) }}% -
+                    {{ '{:.1f}'.format(suburb.growth_projections.confidence_intervals[years][1]) }}%
+                    {% else %}
+                    N/A
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if charts.get('growth_projection') %}
+    <div class="chart-container">
+        <img src="../charts/{{ charts['growth_projection'] }}" alt="Growth Projection">
+    </div>
+    {% endif %}
+</div>
+
+<!-- Key Growth Drivers -->
+{% if suburb.growth_projections.key_drivers %}
+<div class="card">
+    <h2>Key Growth Drivers</h2>
+    <ul>
+        {% for driver in suburb.growth_projections.key_drivers %}
+        <li>{{ driver }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- Market Metrics -->
+<div class="card">
+    <h2>Current Market Metrics</h2>
+    <div class="stats-grid">
+        {% if suburb.market_current.average_price %}
+        <div class="stat-card">
+            <div class="stat-label">Average Price</div>
+            <div class="stat-value" style="font-size: 1.5em;">${{ '{:,.0f}'.format(suburb.market_current.average_price) }}</div>
+        </div>
+        {% endif %}
+        {% if suburb.market_current.days_on_market_current %}
+        <div class="stat-card">
+            <div class="stat-label">Days on Market</div>
+            <div class="stat-value" style="font-size: 1.5em;">{{ '{:.0f}'.format(suburb.market_current.days_on_market_current) }}</div>
+        </div>
+        {% endif %}
+        {% if suburb.market_current.auction_clearance_current %}
+        <div class="stat-card">
+            <div class="stat-label">Auction Clearance</div>
+            <div class="stat-value" style="font-size: 1.5em;">{{ '{:.0f}'.format(suburb.market_current.auction_clearance_current * 100) }}%</div>
+        </div>
+        {% endif %}
+        {% if suburb.market_current.turnover_rate_current %}
+        <div class="stat-card">
+            <div class="stat-label">Turnover Rate</div>
+            <div class="stat-value" style="font-size: 1.5em;">{{ '{:.1f}'.format(suburb.market_current.turnover_rate_current * 100) }}%</div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if charts.get('price_history') %}
+    <div class="chart-container">
+        <h3>Price History</h3>
+        <img src="../charts/{{ charts['price_history'] }}" alt="Price History">
+    </div>
+    {% endif %}
+
+    {% if charts.get('dom_history') %}
+    <div class="chart-container">
+        <h3>Days on Market Trend</h3>
+        <img src="../charts/{{ charts['dom_history'] }}" alt="DOM History">
+    </div>
+    {% endif %}
+</div>
+
+<!-- Property Configuration -->
+{% if suburb.physical_config.typical_bedrooms or suburb.physical_config.land_size_median_sqm %}
+<div class="card">
+    <h2>Typical Property Configuration</h2>
+    <div class="stats-grid">
+        {% if suburb.physical_config.typical_bedrooms %}
+        <div class="stat-card">
+            <div class="stat-label">Bedrooms</div>
+            <div class="stat-value" style="font-size: 1.8em;">{{ suburb.physical_config.typical_bedrooms }}</div>
+        </div>
+        {% endif %}
+        {% if suburb.physical_config.typical_bathrooms %}
+        <div class="stat-card">
+            <div class="stat-label">Bathrooms</div>
+            <div class="stat-value" style="font-size: 1.8em;">{{ suburb.physical_config.typical_bathrooms }}</div>
+        </div>
+        {% endif %}
+        {% if suburb.physical_config.typical_car_spaces %}
+        <div class="stat-card">
+            <div class="stat-label">Car Spaces</div>
+            <div class="stat-value" style="font-size: 1.8em;">{{ suburb.physical_config.typical_car_spaces }}</div>
+        </div>
+        {% endif %}
+        {% if suburb.physical_config.land_size_median_sqm %}
+        <div class="stat-card">
+            <div class="stat-label">Land Size</div>
+            <div class="stat-value" style="font-size: 1.8em;">{{ '{:.0f}'.format(suburb.physical_config.land_size_median_sqm) }}m²</div>
+        </div>
+        {% endif %}
+        {% if suburb.physical_config.floor_size_median_sqm %}
+        <div class="stat-card">
+            <div class="stat-label">Floor Size</div>
+            <div class="stat-value" style="font-size: 1.8em;">{{ '{:.0f}'.format(suburb.physical_config.floor_size_median_sqm) }}m²</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Infrastructure -->
+<div class="card">
+    <h2>Infrastructure & Amenities</h2>
+
+    {% if suburb.infrastructure.current_transport %}
+    <h3>Current Transport</h3>
+    <ul>
+        {% for item in suburb.infrastructure.current_transport %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if suburb.infrastructure.future_transport %}
+    <h3>Planned Transport</h3>
+    <ul>
+        {% for item in suburb.infrastructure.future_transport %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if suburb.infrastructure.planned_infrastructure %}
+    <h3>Planned Infrastructure</h3>
+    <ul>
+        {% for item in suburb.infrastructure.planned_infrastructure %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if suburb.infrastructure.major_events_relevance %}
+    <h3>Major Events & Developments</h3>
+    <p>{{ suburb.infrastructure.major_events_relevance }}</p>
+    {% endif %}
+
+    {% if suburb.infrastructure.shopping_access %}
+    <h3>Shopping & Retail</h3>
+    <p>{{ suburb.infrastructure.shopping_access }}</p>
+    {% endif %}
+
+    {% if suburb.infrastructure.schools_summary %}
+    <h3>Schools</h3>
+    <p>{{ suburb.infrastructure.schools_summary }}</p>
+    {% endif %}
+</div>
+
+<!-- Demographics -->
+{% if suburb.demographics.population_trend or suburb.demographics.median_age %}
+<div class="card">
+    <h2>Demographics</h2>
+
+    {% if suburb.demographics.median_age %}
+    <div class="stat-card" style="max-width: 300px;">
+        <div class="stat-label">Median Age</div>
+        <div class="stat-value" style="font-size: 1.8em;">{{ '{:.0f}'.format(suburb.demographics.median_age) }}</div>
+    </div>
+    {% endif %}
+
+    {% if suburb.demographics.population_trend %}
+    <h3>Population Trend</h3>
+    <p>{{ suburb.demographics.population_trend }}</p>
+    {% endif %}
+
+    {% if suburb.demographics.household_types %}
+    <h3>Household Types</h3>
+    <ul>
+        {% for hh_type, pct in suburb.demographics.household_types.items() %}
+        <li><strong>{{ hh_type.replace('_', ' ').title() }}:</strong>
+            {% if pct is number %}
+                {{ '{:.0f}'.format(pct * 100 if pct < 1 else pct) }}%
+            {% else %}
+                {{ pct }}
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Risk Analysis -->
+<div class="card">
+    <h2>Risk Analysis</h2>
+    <p>{{ suburb.growth_projections.risk_analysis or 'Risk analysis data not available.' }}</p>
+
+    <h3>Risk Score: {{ '{:.1f}'.format(suburb.growth_projections.risk_score) }}/100</h3>
+    <p style="color: #6c757d; margin-top: 10px;">
+        {% if suburb.growth_projections.risk_score < 33 %}
+        <span class="badge badge-success">Low Risk</span> - Stable market with predictable growth patterns
+        {% elif suburb.growth_projections.risk_score < 66 %}
+        <span class="badge badge-warning">Moderate Risk</span> - Some volatility expected, balanced opportunity
+        {% else %}
+        <span class="badge" style="background: var(--danger-color); color: white;">Higher Risk</span> - Greater uncertainty, higher potential rewards
+        {% endif %}
+    </p>
+</div>
+
+<!-- Navigation -->
+<div class="card text-center">
+    <a href="../index.html" class="btn btn-primary">← Back to Overview</a>
+</div>
+{% endblock %}

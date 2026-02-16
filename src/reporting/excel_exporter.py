@@ -137,7 +137,7 @@ def _create_overview_sheet(ws, run_result: RunResult):
     )
 
     headers = ['Rank', 'Suburb', 'State', 'LGA', 'Region', 'Median Price',
-               '5yr Growth %', 'Growth Score', 'Risk Score', 'Composite Score']
+               '5yr Growth %', 'Growth Score', 'Risk Score', 'Composite Score', 'Data Quality']
     for col, header in enumerate(headers, 1):
         ws.cell(row=start_row, column=col, value=header)
     _style_header_row(ws, len(headers), start_row)
@@ -157,6 +157,7 @@ def _create_overview_sheet(ws, run_result: RunResult):
         ws.cell(row=row, column=8, value=m.growth_projections.growth_score)
         ws.cell(row=row, column=9, value=m.growth_projections.risk_score)
         ws.cell(row=row, column=10, value=m.growth_projections.composite_score)
+        ws.cell(row=row, column=11, value=m.data_quality.upper())
         _style_data_row(ws, row, len(headers), alt=(i % 2 == 1))
 
     _auto_column_widths(ws)
@@ -259,9 +260,11 @@ def _create_property_config_sheet(ws, run_result: RunResult):
 
 
 def _create_demographics_sheet(ws, run_result: RunResult):
-    """Create demographics sheet."""
+    """Create demographics sheet with expanded household and income columns."""
     headers = ['Suburb', 'State', 'Median Age', 'Population Trend',
-               'Household Types', 'Income Distribution']
+               'Families with Children %', 'Couples %', 'Single Person %',
+               'Group Households %', 'Other Households %',
+               'Low Income %', 'Medium Income %', 'High Income %']
     for col, header in enumerate(headers, 1):
         ws.cell(row=1, column=col, value=header)
     _style_header_row(ws, len(headers))
@@ -274,21 +277,46 @@ def _create_demographics_sheet(ws, run_result: RunResult):
         ws.cell(row=row, column=2, value=m.identification.state)
         ws.cell(row=row, column=3, value=d.median_age)
         ws.cell(row=row, column=4, value=_safe_str(d.population_trend))
-        ws.cell(row=row, column=5, value=_safe_str(d.household_types))
-        ws.cell(row=row, column=6, value=_safe_str(d.income_distribution))
+
+        # Household types - extract from dict with multiple possible keys
+        household_types = d.household_types or {}
+        ws.cell(row=row, column=5, value=household_types.get('families_with_children', household_types.get('families', 0)))
+        ws.cell(row=row, column=6, value=household_types.get('couples', household_types.get('couple_only', 0)))
+        ws.cell(row=row, column=7, value=household_types.get('single_person', household_types.get('single', 0)))
+        ws.cell(row=row, column=8, value=household_types.get('group_households', household_types.get('group', 0)))
+        ws.cell(row=row, column=9, value=household_types.get('other', household_types.get('other_households', 0)))
+
+        # Income distribution - extract from dict with multiple possible keys
+        income_dist = d.income_distribution or {}
+        ws.cell(row=row, column=10, value=income_dist.get('low_income', income_dist.get('low', 0)))
+        ws.cell(row=row, column=11, value=income_dist.get('medium_income', income_dist.get('medium', 0)))
+        ws.cell(row=row, column=12, value=income_dist.get('high_income', income_dist.get('high', 0)))
+
         _style_data_row(ws, row, len(headers), alt=(i % 2 == 1))
 
     _auto_column_widths(ws)
 
 
 def _create_infrastructure_sheet(ws, run_result: RunResult):
-    """Create infrastructure sheet."""
+    """Create infrastructure sheet with expanded columns."""
     headers = ['Suburb', 'State', 'Current Transport', 'Future Transport',
-               'Planned Infrastructure', 'Major Events', 'Schools',
-               'Shopping Access', 'Crime Stats']
+               'Current Infrastructure', 'Planned Infrastructure',
+               'Major Events Impact', 'Schools Summary', 'Crime Stats Summary', 'Shopping Access']
     for col, header in enumerate(headers, 1):
         ws.cell(row=1, column=col, value=header)
     _style_header_row(ws, len(headers))
+
+    def _format_list_field(field_value):
+        """Format list fields with newlines instead of semicolons for better Excel readability."""
+        if isinstance(field_value, list):
+            return "\n".join(str(item) for item in field_value)
+        return _safe_str(field_value)
+
+    def _format_dict_field(field_value):
+        """Format dict fields as key: value pairs on separate lines."""
+        if isinstance(field_value, dict):
+            return "\n".join(f"{k}: {v}" for k, v in field_value.items())
+        return _safe_str(field_value)
 
     for i, report in enumerate(run_result.get_top_suburbs()):
         row = 2 + i
@@ -296,17 +324,18 @@ def _create_infrastructure_sheet(ws, run_result: RunResult):
         inf = m.infrastructure
         ws.cell(row=row, column=1, value=m.identification.name)
         ws.cell(row=row, column=2, value=m.identification.state)
-        ws.cell(row=row, column=3, value=_safe_str(inf.current_transport))
-        ws.cell(row=row, column=4, value=_safe_str(inf.future_transport))
-        ws.cell(row=row, column=5, value=_safe_str(inf.planned_infrastructure))
-        ws.cell(row=row, column=6, value=_safe_str(inf.major_events_relevance))
-        ws.cell(row=row, column=7, value=_safe_str(inf.schools_summary))
-        ws.cell(row=row, column=8, value=_safe_str(inf.shopping_access))
-        ws.cell(row=row, column=9, value=_safe_str(inf.crime_stats))
+        ws.cell(row=row, column=3, value=_format_list_field(inf.current_transport))
+        ws.cell(row=row, column=4, value=_format_list_field(inf.future_transport))
+        ws.cell(row=row, column=5, value=_format_list_field(inf.current_infrastructure))
+        ws.cell(row=row, column=6, value=_format_list_field(inf.planned_infrastructure))
+        ws.cell(row=row, column=7, value=_safe_str(inf.major_events_relevance))
+        ws.cell(row=row, column=8, value=_safe_str(inf.schools_summary))
+        ws.cell(row=row, column=9, value=_format_dict_field(inf.crime_stats))
+        ws.cell(row=row, column=10, value=_safe_str(inf.shopping_access))
         _style_data_row(ws, row, len(headers), alt=(i % 2 == 1))
 
     # Wider columns for text-heavy content
-    for col_letter in ['C', 'D', 'E', 'F', 'G', 'H', 'I']:
+    for col_letter in ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']:
         ws.column_dimensions[col_letter].width = 40
     for col_letter in ['A', 'B']:
         ws.column_dimensions[col_letter].width = 15

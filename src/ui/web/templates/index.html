@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Overview - Australian Property Research{% endblock %}
+
+{% block content %}
+<!-- Run Information -->
+<div class="card">
+    <h2>Research Run Overview</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Run ID</div>
+            <div class="stat-value" style="font-size: 1.3em;">{{ run_id }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Regions</div>
+            <div class="stat-value" style="font-size: 1.3em;">{{ regions | length }}</div>
+            <p style="font-size: 0.9em; color: #6c757d;">{{ regions | join(', ') if regions | length <= 3 else regions[:2] | join(', ') + '...' }}</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Dwelling Type</div>
+            <div class="stat-value" style="font-size: 1.3em; text-transform: capitalize;">{{ dwelling_type }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Max Price</div>
+            <div class="stat-value">${{ '{:,.0f}'.format(max_price) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Suburbs Analyzed</div>
+            <div class="stat-value">{{ total_suburbs }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Top Ranked</div>
+            <div class="stat-value">{{ top_n }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Price Range Statistics -->
+<div class="card">
+    <h2>Price Statistics</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Lowest Price</div>
+            <div class="stat-value">${{ '{:,.0f}'.format(stats.price_range.min) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Highest Price</div>
+            <div class="stat-value">${{ '{:,.0f}'.format(stats.price_range.max) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Average Price</div>
+            <div class="stat-value">${{ '{:,.0f}'.format(stats.price_range.avg) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Median Price</div>
+            <div class="stat-value">${{ '{:,.0f}'.format(stats.price_range.median) }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Growth Statistics -->
+<div class="card">
+    <h2>Growth Potential</h2>
+    <div class="stats-grid">
+        <div class="stat-card" style="border-left-color: var(--success-color);">
+            <div class="stat-label">Top Growth Score</div>
+            <div class="stat-value" style="color: var(--success-color);">{{ '{:.1f}'.format(stats.growth_score_range.max) }}</div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--secondary-color);">
+            <div class="stat-label">Avg Growth Score</div>
+            <div class="stat-value" style="color: var(--secondary-color);">{{ '{:.1f}'.format(stats.growth_score_range.avg) }}</div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--success-color);">
+            <div class="stat-label">Top 5-Year Growth</div>
+            <div class="stat-value" style="color: var(--success-color);">{{ '{:.1f}'.format(stats.five_year_growth_range.max) }}%</div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--secondary-color);">
+            <div class="stat-label">Avg 5-Year Growth</div>
+            <div class="stat-value" style="color: var(--secondary-color);">{{ '{:.1f}'.format(stats.five_year_growth_range.avg) }}%</div>
+        </div>
+    </div>
+</div>
+
+<!-- Comparison Charts -->
+{% if overview_charts %}
+<div class="card">
+    <h2>Comparative Analysis</h2>
+
+    {% for chart_name, chart_file in overview_charts.items() %}
+    <div class="chart-container">
+        <h3>{{ chart_name.replace('_', ' ').title() }}</h3>
+        <img src="charts/{{ chart_file }}" alt="{{ chart_name }}">
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Top Ranked Suburbs -->
+<div class="card">
+    <h2 id="suburbs">Top Ranked Suburbs</h2>
+    <p style="margin-bottom: 20px;">Click on a suburb to view the detailed report.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Suburb</th>
+                <th>State</th>
+                <th>Median Price</th>
+                <th>5-Year Growth</th>
+                <th>Growth Score</th>
+                <th>Composite Score</th>
+                <th>Data Quality</th>
+                <th>Report</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for report in reports %}
+            <tr>
+                <td><span class="badge badge-rank">#{{ report.rank }}</span></td>
+                <td>
+                    <strong>{{ report.metrics.identification.name }}</strong>
+                    {% if report.metrics.data_quality == 'fallback' %}
+                    <span title="Fallback data quality" style="color: #dc3545; font-size: 0.8em; margin-left: 5px;">[fallback]</span>
+                    {% elif report.metrics.data_quality == 'low' %}
+                    <span title="Low data quality" style="color: #ffc107; font-size: 0.8em; margin-left: 5px;">[low quality]</span>
+                    {% endif %}
+                </td>
+                <td><span class="badge badge-info">{{ report.metrics.identification.state }}</span></td>
+                <td>${{ '{:,.0f}'.format(report.metrics.market_current.median_price) }}</td>
+                <td class="growth-positive">{{ '{:.1f}'.format(report.metrics.growth_projections.projected_growth_pct.get(5, 0)) }}%</td>
+                <td>{{ '{:.1f}'.format(report.metrics.growth_projections.growth_score) }}</td>
+                <td><strong>{{ '{:.1f}'.format(report.metrics.growth_projections.composite_score) }}</strong></td>
+                <td>{{ report.metrics.data_quality | upper }}</td>
+                <td><a href="suburbs/{{ report.metrics.get_slug() }}.html" class="btn btn-primary">View Report →</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Methodology -->
+<div class="card">
+    <h2 id="methodology">Methodology</h2>
+    <h3>Data Sources</h3>
+    <ul>
+        <li><strong>Perplexity Deep Research:</strong> AI-powered web search and analysis</li>
+        <li><strong>Claude Sonnet 4.5:</strong> Advanced reasoning and data extraction</li>
+        <li><strong>Real Estate APIs:</strong> Current market data and historical trends</li>
+        <li><strong>Government Data:</strong> Infrastructure projects and demographic information</li>
+    </ul>
+
+    <h3>Ranking Methodology</h3>
+    <ul>
+        <li><strong>Growth Score (0-100):</strong> Projected appreciation potential based on infrastructure, demographics, and market trends</li>
+        <li><strong>Risk Score (0-100):</strong> Market volatility, economic factors, and uncertainty measures</li>
+        <li><strong>Composite Score:</strong> Growth potential adjusted for risk (higher is better)</li>
+        <li><strong>5-Year Growth %:</strong> Projected median price increase over 5 years</li>
+    </ul>
+
+    <h3>Growth Projections</h3>
+    <p>Growth estimates are provided for:</p>
+    <ul>
+        <li>1, 2, 3, 5, 10, and 25-year horizons</li>
+        <li>Confidence intervals showing likely ranges</li>
+        <li>Key growth drivers and risk factors</li>
+    </ul>
+
+    <h3>Disclaimer</h3>
+    <p style="color: #6c757d; font-size: 0.95em; margin-top: 15px;">
+        <strong>Important:</strong> This analysis is for informational purposes only and does not constitute financial or investment advice.
+        Property markets are subject to various risks and uncertainties. Past performance does not guarantee future results.
+        Please conduct your own due diligence and consult with qualified professionals before making investment decisions.
+    </p>
+</div>
+{% endblock %}
