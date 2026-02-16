@@ -13,8 +13,8 @@ This roadmap hardens the existing v1 property research application into a produc
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Security & Error Foundations** - Close security gaps and establish exception hierarchy for all downstream error handling
-- [ ] **Phase 2: Thread Safety & Response Validation** - Fix concurrency bugs and validate all API responses before caching
-- [ ] **Phase 3: Cache Hardening & Crash Recovery** - Make cache corruption-proof and enable interrupted runs to resume
+- [x] **Phase 2: Thread Safety & Response Validation** - Fix concurrency bugs and validate all API responses before caching
+- [x] **Phase 3: Cache Hardening & Crash Recovery** - Make cache corruption-proof and enable interrupted runs to resume
 - [x] **Phase 4: Progress, Performance & Data Quality** - Add real-time feedback, adaptive scaling, and data quality tracking
 - [x] **Phase 5: Comprehensive Testing** - Validate all hardening work with unit, integration, async, and concurrency tests (completed 2026-02-16)
 
@@ -48,8 +48,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Thread-safe singleton cache with double-checked locking, web server state protection with threading.Lock, queue-based progress reporting
-- [ ] 02-02-PLAN.md -- Pydantic validation schemas for discovery and research API responses with flexible coercion, structured warnings, wired into pipelines before caching
+- [x] 02-01-PLAN.md -- Thread-safe singleton cache with double-checked locking, web server state protection with threading.Lock, queue-based progress reporting
+- [x] 02-02-PLAN.md -- Pydantic validation schemas for discovery and research API responses with flexible coercion, structured warnings, wired into pipelines before caching
 
 ### Phase 3: Cache Hardening & Crash Recovery
 **Goal**: Cache files survive crashes without corruption, and interrupted research runs can be resumed from the last completed suburb
@@ -64,8 +64,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- Atomic cache writes with tempfile+fsync+rename, backup/restore for cache index, orphan cleanup on startup, LRU eviction with configurable size limit
-- [ ] 03-02-PLAN.md -- CheckpointManager with SHA-256 validated checkpoints, --resume CLI flag, discovery and research checkpointing in pipeline
+- [x] 03-01-PLAN.md -- Atomic cache writes with tempfile+fsync+rename, backup/restore for cache index, orphan cleanup on startup, LRU eviction with configurable size limit
+- [x] 03-02-PLAN.md -- CheckpointManager with SHA-256 validated checkpoints, --resume CLI flag, discovery and research checkpointing in pipeline
 
 ### Phase 4: Progress, Performance & Data Quality
 **Goal**: Users see live progress during long research runs, worker count adapts to hardware, and reports clearly indicate data confidence levels
@@ -97,8 +97,8 @@ Plans:
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 05-01-PLAN.md -- Pytest infrastructure setup, shared fixtures, and unit tests for cache, exceptions, validation, and worker scaling
-- [ ] 05-02-PLAN.md -- Integration pipeline test, async SSE endpoint tests, and concurrent thread safety tests
+- [x] 05-01-PLAN.md -- Pytest infrastructure setup, shared fixtures, and unit tests for cache, exceptions, validation, and worker scaling
+- [x] 05-02-PLAN.md -- Integration pipeline test, async SSE endpoint tests, and concurrent thread safety tests
 
 ## Progress
 
@@ -108,7 +108,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Security & Error Foundations | 2/2 | Complete | 2026-02-16 |
-| 2. Thread Safety & Response Validation | 0/2 | Not started | - |
-| 3. Cache Hardening & Crash Recovery | 0/2 | Not started | - |
+| 2. Thread Safety & Response Validation | 2/2 | Complete | 2026-02-16 |
+| 3. Cache Hardening & Crash Recovery | 2/2 | Complete | 2026-02-16 |
 | 4. Progress, Performance & Data Quality | 3/3 | Complete | 2026-02-16 |
-| 5. Comprehensive Testing | 0/2 | Complete    | 2026-02-16 |
+| 5. Comprehensive Testing | 2/2 | Complete | 2026-02-16 |

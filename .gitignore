@@ -66,6 +66,10 @@ Thumbs.db
 htmlcov/
 test_output/
 
+# Planning
+.planning/
+.planning/*
+
 # Progress tracking
 TODO.md
 PROGRESS.md
@@ -74,6 +78,9 @@ TASKS.md
 ROADMAP.md
 NOTES.md
 STATUS.md
+PROJECT.md
+ROADMAP.md
+STATE.md
 
 # PyInstaller
 *.spec

@@ -71,6 +71,21 @@ Key existing architecture:
 - **Breaking changes**: Allowed for v2.0 — no backwards compatibility requirement with v1 cache/config
 - **Test coverage**: All identified gaps in CONCERNS.md must have tests
 
+## Current Milestone: v2.0 Hardening
+
+**Goal:** Harden the existing system — fix security gaps, improve reliability, add crash recovery, and achieve comprehensive test coverage.
+
+**Target features:**
+- Security fixes (API key exposure, input validation, path traversal)
+- Proper exception hierarchy replacing fragile string-matching
+- JSON schema validation for all API responses
+- Thread safety fixes (cache, web state)
+- Crash recovery and cache resilience
+- Real-time progress streaming (WebSocket/SSE)
+- Performance optimization (adaptive workers, pipeline, LRU cache)
+- Data quality tracking and ranking improvements
+- Comprehensive test coverage
+
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
@@ -81,4 +96,4 @@ Key existing architecture:
 | Adaptive worker count | Hardcoded workers cause issues on varied hardware | — Pending |
 
 ---
-*Last updated: 2026-02-15 after initialization*
+*Last updated: 2026-02-15 after milestone v2.0 start*
