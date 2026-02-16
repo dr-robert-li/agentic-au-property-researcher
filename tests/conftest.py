@@ -45,3 +45,22 @@ def reset_cache_singleton():
     """Reset the cache singleton after each test to avoid cross-test contamination."""
     yield
     reset_cache_instance()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def mock_env_vars():
+    """Set dummy env vars so settings module loads without real API keys.
+
+    Keys must pass format validation in config.settings:
+    - PERPLEXITY_API_KEY: starts with 'pplx-' and >= 45 chars
+    - ANTHROPIC_API_KEY: starts with 'sk-ant-' and >= 50 chars
+    """
+    import os
+    os.environ.setdefault(
+        "PERPLEXITY_API_KEY",
+        "pplx-0000000000000000000000000000000000000000000000000",
+    )
+    os.environ.setdefault(
+        "ANTHROPIC_API_KEY",
+        "sk-ant-00000000000000000000000000000000000000000000000000000000",
+    )
