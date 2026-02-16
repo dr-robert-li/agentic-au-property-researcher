@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSON
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -107,6 +108,8 @@ completed_runs = {}
 active_runs_lock = threading.Lock()
 completed_runs_lock = threading.Lock()
 progress_queues: dict[str, queue.Queue] = {}
+sse_connections: dict[str, set[asyncio.Task]] = {}
+sse_connections_lock = threading.Lock()
 
 # Thread pool for background tasks
 executor = ThreadPoolExecutor(max_workers=2)
@@ -141,11 +144,12 @@ def run_pipeline_background(run_id: str, user_input: UserInput):
         with active_runs_lock:
             active_runs[run_id]["status"] = "running"
 
-        def progress_callback(message: str):
+        def progress_callback(message: str, percent: float = 0.0):
             """Push progress message to queue."""
             try:
                 progress_queue.put({
                     "message": message,
+                    "percent": percent,
                     "timestamp": datetime.now().isoformat()
                 }, timeout=1)
             except queue.Full:
@@ -566,6 +570,72 @@ async def api_run_progress(run_id: str):
         pass
 
     return JSONResponse(content={"progress": messages, "done": done})
+
+
+@app.get("/api/progress/{run_id}/stream")
+async def api_run_progress_stream(request: Request, run_id: str):
+    """SSE endpoint for real-time progress streaming."""
+    import json
+
+    progress_queue = progress_queues.get(run_id)
+    if not progress_queue:
+        # Return error event if run not found
+        async def error_generator():
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": "Run not found"})
+            }
+        return EventSourceResponse(error_generator())
+
+    async def event_generator():
+        """Generate SSE events from progress queue."""
+        current_task = asyncio.current_task()
+
+        # Register connection
+        with sse_connections_lock:
+            if run_id not in sse_connections:
+                sse_connections[run_id] = set()
+            sse_connections[run_id].add(current_task)
+
+        try:
+            while True:
+                # Check for client disconnect
+                if await request.is_disconnected():
+                    break
+
+                # Try to get message from queue
+                try:
+                    msg = progress_queue.get_nowait()
+                    if msg is None:
+                        # Sentinel value indicates completion
+                        yield {
+                            "event": "complete",
+                            "data": json.dumps({"status": "completed"})
+                        }
+                        break
+                    else:
+                        # Send progress event
+                        yield {
+                            "event": "progress",
+                            "data": json.dumps({
+                                "message": msg["message"],
+                                "percent": msg.get("percent", 0),
+                                "timestamp": msg["timestamp"]
+                            })
+                        }
+                except queue.Empty:
+                    # Send keepalive comment
+                    yield {"comment": "keepalive"}
+                    await asyncio.sleep(0.5)
+        finally:
+            # Clean up connection tracking
+            with sse_connections_lock:
+                if run_id in sse_connections:
+                    sse_connections[run_id].discard(current_task)
+                    if not sse_connections[run_id]:
+                        del sse_connections[run_id]
+
+    return EventSourceResponse(event_generator())
 
 
 @app.get("/health")

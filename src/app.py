@@ -34,7 +34,7 @@ API_GENERAL_ERRORS = TRANSIENT_ERRORS
 
 def run_research_pipeline(
     user_input: UserInput,
-    progress_callback: Optional[Callable[[str], None]] = None,
+    progress_callback: Optional[Callable[[str, float], None]] = None,
     resume_from: Optional[str] = None
 ) -> RunResult:
     """
@@ -47,11 +47,11 @@ def run_research_pipeline(
     Returns:
         Complete RunResult with all reports
     """
-    def _progress(message: str):
+    def _progress(message: str, percent: float = 0.0):
         """Report progress to both stdout and callback."""
         print(message)
         if progress_callback:
-            progress_callback(message)
+            progress_callback(message, percent)
 
     print("\n" + "="*80)
     print("🏘️  AUSTRALIAN PROPERTY RESEARCH PIPELINE")
@@ -104,7 +104,7 @@ def run_research_pipeline(
         if candidates is None:
             print("\n📍 STEP 1: SUBURB DISCOVERY")
             print("-" * 80)
-            _progress(f"Discovering suburbs matching criteria (targeting {user_input.num_suburbs} suburbs)...")
+            _progress(f"Discovering suburbs matching criteria (targeting {user_input.num_suburbs} suburbs)...", 0)
             candidates = parallel_discover_suburbs(
                 user_input,
                 max_results=user_input.num_suburbs * 5,
@@ -112,23 +112,23 @@ def run_research_pipeline(
             )
 
             if not candidates:
-                _progress("No suburbs found matching criteria")
+                _progress("No suburbs found matching criteria", 0)
                 run_result.status = "failed"
                 run_result.error_message = "No qualifying suburbs found"
                 return run_result
 
-            _progress(f"Found {len(candidates)} qualifying suburb candidates (need {user_input.num_suburbs})")
+            _progress(f"Found {len(candidates)} qualifying suburb candidates (need {user_input.num_suburbs})", 20)
             print("\n" + get_discovery_summary(candidates))
 
             # Save discovery checkpoint
             checkpoint_mgr.save_checkpoint("discovery", {
                 "candidates": [c.to_dict() for c in candidates]
             })
-            _progress("Discovery checkpoint saved")
+            _progress("Discovery checkpoint saved", 20)
         else:
             print("\n📍 STEP 1: SUBURB DISCOVERY (RESUMED)")
             print("-" * 80)
-            _progress(f"Skipping discovery (loaded {len(candidates)} candidates from checkpoint)")
+            _progress(f"Skipping discovery (loaded {len(candidates)} candidates from checkpoint)", 20)
 
         # Step 2: Detailed research
         print("\n🔬 STEP 2: DETAILED RESEARCH")
@@ -142,17 +142,21 @@ def run_research_pipeline(
             _progress(f"Skipping {original_count - len(candidates)} already-completed suburbs")
 
         if len(candidates) == 0:
-            _progress(f"All suburbs already researched (loaded {len(metrics_list)} from checkpoint)")
+            _progress(f"All suburbs already researched (loaded {len(metrics_list)} from checkpoint)", 80)
         else:
-            _progress(f"Starting detailed research on {research_count} suburbs (to select top {user_input.num_suburbs})...")
+            _progress(f"Starting detailed research on {research_count} suburbs (to select top {user_input.num_suburbs})...", 20)
 
             # Process in batches of 5 with checkpoints after each batch
             research_candidates = candidates[:research_count]
             batch_size = 5
+            total_batches = (len(research_candidates) + batch_size - 1) // batch_size
 
             for batch_start in range(0, len(research_candidates), batch_size):
                 batch = research_candidates[batch_start:batch_start + batch_size]
-                _progress(f"Researching batch {batch_start // batch_size + 1}: suburbs {batch_start + 1}-{batch_start + len(batch)} of {len(research_candidates)}")
+                batch_num = batch_start // batch_size + 1
+                # Calculate percent: research phase is 20-80%, so 60% range
+                percent = 20 + (60 * batch_num / total_batches)
+                _progress(f"Researching batch {batch_num}: suburbs {batch_start + 1}-{batch_start + len(batch)} of {len(research_candidates)}", percent)
 
                 batch_metrics = parallel_research_suburbs(
                     batch,
@@ -173,20 +177,20 @@ def run_research_pipeline(
                     "completed_suburbs": list(completed_suburbs),
                     "metrics_list": [m.model_dump() for m in metrics_list]
                 }, sequence=len(completed_suburbs))
-                _progress(f"Checkpoint saved: {len(completed_suburbs)} suburbs completed")
+                _progress(f"Checkpoint saved: {len(completed_suburbs)} suburbs completed", percent)
 
         if not metrics_list:
-            _progress("Research failed for all suburbs")
+            _progress("Research failed for all suburbs", 0)
             run_result.status = "failed"
             run_result.error_message = "Research failed"
             return run_result
 
-        _progress(f"Research complete: {len(metrics_list)} suburbs analyzed")
+        _progress(f"Research complete: {len(metrics_list)} suburbs analyzed", 80)
 
         # Step 3: Ranking
         print("\n📊 STEP 3: RANKING & ANALYSIS")
         print("-" * 80)
-        _progress(f"Ranking {len(metrics_list)} suburbs by composite score...")
+        _progress(f"Ranking {len(metrics_list)} suburbs by composite score...", 80)
         reports = rank_suburbs(
             metrics_list,
             ranking_method="composite_score",
@@ -194,15 +198,15 @@ def run_research_pipeline(
         )
 
         run_result.suburbs = reports
-        _progress(f"Selected top {len(reports)} suburbs for reports")
+        _progress(f"Selected top {len(reports)} suburbs for reports", 85)
         if len(reports) < user_input.num_suburbs:
-            _progress(f"Note: Only {len(reports)} suburbs available (requested {user_input.num_suburbs})")
+            _progress(f"Note: Only {len(reports)} suburbs available (requested {user_input.num_suburbs})", 85)
         print("\n" + get_ranking_summary(reports))
 
         # Step 4: Report generation
         print("\n📝 STEP 4: REPORT GENERATION")
         print("-" * 80)
-        _progress(f"Generating reports for {len(reports)} suburbs...")
+        _progress(f"Generating reports for {len(reports)} suburbs...", 90)
         output_dir = settings.OUTPUT_DIR / user_input.run_id
         run_result.output_dir = output_dir
 
@@ -214,7 +218,7 @@ def run_research_pipeline(
 
         # Update status
         run_result.status = "completed"
-        _progress("Reports generated successfully")
+        _progress("Reports generated successfully", 100)
 
         print("\n" + "="*80)
         print("✅ RESEARCH PIPELINE COMPLETE!")
