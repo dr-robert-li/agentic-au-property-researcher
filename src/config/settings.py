@@ -141,3 +141,6 @@ CACHE_DIR = BASE_DIR / "cache"
 CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
 CACHE_DISCOVERY_TTL = int(os.getenv("CACHE_DISCOVERY_TTL", "86400"))  # 24 hours
 CACHE_RESEARCH_TTL = int(os.getenv("CACHE_RESEARCH_TTL", "604800"))  # 7 days
+CACHE_MAX_SIZE_MB = int(os.getenv("CACHE_MAX_SIZE_MB", "500"))  # 500 MB default
+CHECKPOINT_DIR = BASE_DIR / "checkpoints"
+CHECKPOINT_DIR.mkdir(exist_ok=True)

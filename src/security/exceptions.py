@@ -187,6 +187,13 @@ class ResearchError(ApplicationError):
         )
 
 
+class CacheError(ApplicationError):
+    """Cache operation failed (corruption, I/O error, eviction failure)."""
+    def __init__(self, message: str, operation: Optional[str] = None, is_transient: bool = True):
+        super().__init__(message=message, error_code="CACHE_ERROR", is_transient=is_transient)
+        self.operation = operation  # "read", "write", "evict", "restore"
+
+
 # ============================================================================
 # Convenience Tuples for Catch Blocks
 # ============================================================================
