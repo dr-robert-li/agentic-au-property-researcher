@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Security & Error Foundations** - Close security gaps and establish exception hierarchy for all downstream error handling
 - [ ] **Phase 2: Thread Safety & Response Validation** - Fix concurrency bugs and validate all API responses before caching
 - [ ] **Phase 3: Cache Hardening & Crash Recovery** - Make cache corruption-proof and enable interrupted runs to resume
-- [ ] **Phase 4: Progress, Performance & Data Quality** - Add real-time feedback, adaptive scaling, and data quality tracking
+- [x] **Phase 4: Progress, Performance & Data Quality** - Add real-time feedback, adaptive scaling, and data quality tracking
 - [ ] **Phase 5: Comprehensive Testing** - Validate all hardening work with unit, integration, async, and concurrency tests
 
 ## Phase Details
@@ -77,12 +77,12 @@ Plans:
   3. Running in a 2-CPU Docker container uses 2-4 workers instead of detecting 64 host CPUs and spawning 64 workers
   4. Suburb reports display visible warnings when data comes from fallback sources or has low confidence
   5. Excel exports include full demographic breakdowns (household types, income) and infrastructure data (transport, schools, crime)
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 04-01: SSE progress streaming endpoint and browser client
-- [ ] 04-02: Adaptive worker scaling and pipeline optimization
-- [ ] 04-03: Data quality tracking, ranking adjustments, and Excel export improvements
+- [x] 04-01-PLAN.md -- SSE progress streaming endpoint with EventSourceResponse, progress callback with percentage tracking, browser EventSource client with auto-reconnect
+- [x] 04-02-PLAN.md -- Container-aware CPU detection (cgroup v1/v2), adaptive worker scaling with psutil memory awareness, configurable pipeline multipliers (reduced from 5/3 to 2.0/1.5)
+- [x] 04-03-PLAN.md -- Data quality fields in SuburbMetrics, quality-adjusted ranking with configurable weights, HTML warning banners, expanded Excel demographics/infrastructure columns
 
 ### Phase 5: Comprehensive Testing
 **Goal**: All hardening work from Phases 1-4 is validated with automated tests covering critical paths, concurrency, and async behavior
@@ -110,5 +110,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Security & Error Foundations | 2/2 | Complete | 2026-02-16 |
 | 2. Thread Safety & Response Validation | 0/2 | Not started | - |
 | 3. Cache Hardening & Crash Recovery | 0/2 | Not started | - |
-| 4. Progress, Performance & Data Quality | 0/3 | Not started | - |
+| 4. Progress, Performance & Data Quality | 3/3 | Complete | 2026-02-16 |
 | 5. Comprehensive Testing | 0/2 | Not started | - |
