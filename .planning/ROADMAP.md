@@ -61,11 +61,11 @@ Plans:
   3. Cache directory stays within the configured size limit by automatically evicting least-recently-used entries
   4. Running with --resume after a crash skips already-completed suburbs and continues from the last checkpoint
   5. If the latest checkpoint is corrupted, the system falls back to the previous checkpoint automatically
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: Atomic cache writes, backup/restore, orphan cleanup, and LRU eviction
-- [ ] 03-02: Checkpoint system with resume capability
+- [ ] 03-01-PLAN.md -- Atomic cache writes with tempfile+fsync+rename, backup/restore for cache index, orphan cleanup on startup, LRU eviction with configurable size limit
+- [ ] 03-02-PLAN.md -- CheckpointManager with SHA-256 validated checkpoints, --resume CLI flag, discovery and research checkpointing in pipeline
 
 ### Phase 4: Progress, Performance & Data Quality
 **Goal**: Users see live progress during long research runs, worker count adapts to hardware, and reports clearly indicate data confidence levels
