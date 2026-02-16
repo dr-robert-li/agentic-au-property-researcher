@@ -34,7 +34,8 @@ API_GENERAL_ERRORS = TRANSIENT_ERRORS
 
 def run_research_pipeline(
     user_input: UserInput,
-    progress_callback: Optional[Callable[[str], None]] = None
+    progress_callback: Optional[Callable[[str], None]] = None,
+    resume_from: Optional[str] = None
 ) -> RunResult:
     """
     Execute the complete research pipeline.
@@ -71,38 +72,108 @@ def run_research_pipeline(
     )
 
     try:
+        # Initialize checkpoint manager
+        from research.checkpoints import CheckpointManager
+        from models.suburb_metrics import SuburbMetrics
+
+        checkpoint_mgr = CheckpointManager(user_input.run_id, settings.CHECKPOINT_DIR)
+        candidates = None
+        completed_suburbs = set()
+        metrics_list = []
+
+        # Resume from checkpoint if requested
+        if resume_from:
+            _progress(f"Attempting to resume run: {resume_from}")
+
+            # Try loading discovery checkpoint
+            discovery_state = checkpoint_mgr.load_latest_checkpoint("discovery")
+            if discovery_state:
+                from research.suburb_discovery import SuburbCandidate
+                candidates = [SuburbCandidate(d) for d in discovery_state["candidates"]]
+                _progress(f"Resumed discovery: {len(candidates)} candidates from checkpoint")
+
+            # Try loading research checkpoint
+            research_state = checkpoint_mgr.load_latest_checkpoint("research")
+            if research_state:
+                completed_suburbs = set(research_state.get("completed_suburbs", []))
+                # SuburbMetrics is Pydantic v2: use model_validate() to reconstruct from dict
+                metrics_list = [SuburbMetrics.model_validate(d) for d in research_state.get("metrics_list", [])]
+                _progress(f"Resumed research: {len(completed_suburbs)} suburbs already completed")
+
         # Step 1: Discover suburbs
-        print("\n📍 STEP 1: SUBURB DISCOVERY")
-        print("-" * 80)
-        _progress(f"Discovering suburbs matching criteria (targeting {user_input.num_suburbs} suburbs)...")
-        candidates = parallel_discover_suburbs(
-            user_input,
-            max_results=user_input.num_suburbs * 5,
-            progress_callback=progress_callback,
-        )
+        if candidates is None:
+            print("\n📍 STEP 1: SUBURB DISCOVERY")
+            print("-" * 80)
+            _progress(f"Discovering suburbs matching criteria (targeting {user_input.num_suburbs} suburbs)...")
+            candidates = parallel_discover_suburbs(
+                user_input,
+                max_results=user_input.num_suburbs * 5,
+                progress_callback=progress_callback,
+            )
 
-        if not candidates:
-            _progress("No suburbs found matching criteria")
-            run_result.status = "failed"
-            run_result.error_message = "No qualifying suburbs found"
-            return run_result
+            if not candidates:
+                _progress("No suburbs found matching criteria")
+                run_result.status = "failed"
+                run_result.error_message = "No qualifying suburbs found"
+                return run_result
 
-        _progress(f"Found {len(candidates)} qualifying suburb candidates (need {user_input.num_suburbs})")
-        print("\n" + get_discovery_summary(candidates))
+            _progress(f"Found {len(candidates)} qualifying suburb candidates (need {user_input.num_suburbs})")
+            print("\n" + get_discovery_summary(candidates))
+
+            # Save discovery checkpoint
+            checkpoint_mgr.save_checkpoint("discovery", {
+                "candidates": [c.to_dict() for c in candidates]
+            })
+            _progress("Discovery checkpoint saved")
+        else:
+            print("\n📍 STEP 1: SUBURB DISCOVERY (RESUMED)")
+            print("-" * 80)
+            _progress(f"Skipping discovery (loaded {len(candidates)} candidates from checkpoint)")
 
         # Step 2: Detailed research
         print("\n🔬 STEP 2: DETAILED RESEARCH")
         print("-" * 80)
         research_count = min(len(candidates), user_input.num_suburbs * 3)
-        _progress(f"Starting detailed research on {research_count} suburbs (to select top {user_input.num_suburbs})...")
-        metrics_list = parallel_research_suburbs(
-            candidates,
-            user_input.dwelling_type,
-            user_input.max_median_price,
-            max_suburbs=research_count,
-            provider=user_input.provider,
-            progress_callback=progress_callback,
-        )
+
+        # Filter out completed suburbs if resuming
+        if completed_suburbs:
+            original_count = len(candidates)
+            candidates = [c for c in candidates if f"{c.name}_{c.state}" not in completed_suburbs]
+            _progress(f"Skipping {original_count - len(candidates)} already-completed suburbs")
+
+        if len(candidates) == 0:
+            _progress(f"All suburbs already researched (loaded {len(metrics_list)} from checkpoint)")
+        else:
+            _progress(f"Starting detailed research on {research_count} suburbs (to select top {user_input.num_suburbs})...")
+
+            # Process in batches of 5 with checkpoints after each batch
+            research_candidates = candidates[:research_count]
+            batch_size = 5
+
+            for batch_start in range(0, len(research_candidates), batch_size):
+                batch = research_candidates[batch_start:batch_start + batch_size]
+                _progress(f"Researching batch {batch_start // batch_size + 1}: suburbs {batch_start + 1}-{batch_start + len(batch)} of {len(research_candidates)}")
+
+                batch_metrics = parallel_research_suburbs(
+                    batch,
+                    user_input.dwelling_type,
+                    user_input.max_median_price,
+                    max_suburbs=len(batch),
+                    provider=user_input.provider,
+                    progress_callback=progress_callback
+                )
+
+                for m in batch_metrics:
+                    completed_suburbs.add(f"{m.identification.name}_{m.identification.state}")
+                    metrics_list.append(m)
+
+                # Checkpoint after each batch
+                # SuburbMetrics is Pydantic v2: use .model_dump() for serialization
+                checkpoint_mgr.save_checkpoint("research", {
+                    "completed_suburbs": list(completed_suburbs),
+                    "metrics_list": [m.model_dump() for m in metrics_list]
+                }, sequence=len(completed_suburbs))
+                _progress(f"Checkpoint saved: {len(completed_suburbs)} suburbs completed")
 
         if not metrics_list:
             _progress("Research failed for all suburbs")
@@ -289,6 +360,14 @@ Examples:
         help="Compare 2-3 past runs side-by-side (provide run IDs)"
     )
 
+    parser.add_argument(
+        "--resume",
+        type=str,
+        metavar="RUN_ID",
+        default=None,
+        help="Resume an interrupted run from its last checkpoint (provide the run_id)"
+    )
+
     args = parser.parse_args()
 
     # Handle --clear-cache
@@ -320,6 +399,23 @@ Examples:
             print(f"❌ Comparison failed: {e}")
             sys.exit(1)
         sys.exit(0)
+
+    # Handle --resume
+    if args.resume:
+        user_input = UserInput(
+            max_median_price=args.max_price,
+            dwelling_type=args.dwelling_type,
+            regions=args.regions,
+            num_suburbs=args.num_suburbs,
+            provider=args.provider,
+            run_id=args.resume,  # Use the provided run_id
+            interface_mode="cli"
+        )
+        run_result = run_research_pipeline(user_input, resume_from=args.resume)
+        if run_result.status == "completed":
+            sys.exit(0)
+        else:
+            sys.exit(1)
 
     # Validate num_suburbs
     if args.num_suburbs > 25:
