@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Status - {{ status.run_id }}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .status-container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-transform: uppercase;
+        }
+        .status-starting { background: #fff3cd; color: #856404; }
+        .status-running { background: #cfe2ff; color: #084298; }
+        .status-completed { background: #d1e7dd; color: #0f5132; }
+        .status-failed { background: #f8d7da; color: #842029; }
+        .status-cancelled { background: #e2e3e5; color: #41464b; }
+        .progress-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .info-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .info-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+        .action-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .btn-view-report {
+            background: var(--success-color);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .btn-view-report:hover {
+            background: #138547;
+        }
+        .btn-new-research {
+            background: var(--primary-color);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .btn-new-research:hover {
+            background: #236b87;
+        }
+        .btn-export {
+            background: #6c757d;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .btn-export:hover {
+            background: #5a6268;
+        }
+        .error-message {
+            background: #f8d7da;
+            border: 1px solid #f5c2c7;
+            color: #842029;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="status-container">
+        <div class="card">
+            <h1>Research Run: {{ status.run_id }}</h1>
+
+            <div style="margin: 20px 0;">
+                <span class="status-badge status-{{ status.status }}">
+                    {% if status.status in ['starting', 'running'] %}
+                    <span class="progress-spinner"></span>
+                    {% endif %}
+                    {{ status.status }}
+                </span>
+            </div>
+
+            {% if status.status in ['starting', 'running'] %}
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Status</div>
+                    <div class="info-value" id="current-status">{{ status.status }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Started</div>
+                    <div class="info-value">{{ status.started_at[:19] }}</div>
+                </div>
+                {% if status.user_input %}
+                <div class="info-item">
+                    <div class="info-label">Regions</div>
+                    <div class="info-value">{{ status.user_input.regions|join(', ') if status.user_input.regions|length <= 2 else status.user_input.regions|length ~ ' regions' }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Max Price</div>
+                    <div class="info-value">${{ '{:,.0f}'.format(status.user_input.max_median_price) }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <p><strong>🔬 Research in Progress</strong></p>
+                <p style="margin: 10px 0 0 0; color: #666;">
+                    This page will automatically update. Deep research typically takes 2-5 minutes per suburb.
+                    Feel free to navigate away - you can check back later.
+                </p>
+            </div>
+
+            <!-- Progress Bar -->
+            <div style="margin: 20px 0;">
+                <h3 style="margin-bottom: 10px; color: var(--primary-color);">Progress</h3>
+                <div style="position: relative; width: 100%; height: 32px; background: #e9ecef; border-radius: 16px; overflow: hidden; border: 1px solid #dee2e6;">
+                    <div id="progress-bar-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #28a745, #20c997); transition: width 0.3s ease, background-color 0.3s ease; position: absolute; top: 0; left: 0;"></div>
+                    <div id="progress-bar-text" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; color: #212529; z-index: 1; text-shadow: 0 0 3px rgba(255,255,255,0.8);">0%</div>
+                </div>
+            </div>
+
+            <!-- Progress Steps -->
+            <div id="progress-steps" style="margin: 20px 0;">
+                <h3 style="margin-bottom: 10px; color: var(--primary-color);">Activity Log</h3>
+                <div id="steps-list" style="background: #f8f9fa; border-radius: 6px; padding: 15px; max-height: 400px; overflow-y: auto; font-family: monospace;">
+                    {% if status.steps %}
+                        {% for step in status.steps %}
+                        <div style="padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.9em;">
+                            <span style="color: #28a745; margin-right: 8px;">&#10003;</span>
+                            <span>{{ step.message }}</span>
+                            <span style="color: #999; font-size: 0.8em; float: right;">{{ step.timestamp[11:19] }}</span>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div style="color: #666; font-style: italic;">Waiting for pipeline to start...</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% elif status.status == 'completed' %}
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Suburbs Analyzed</div>
+                    <div class="info-value">{{ status.suburbs_count }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Started</div>
+                    <div class="info-value">{{ status.started_at[:19] }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Completed</div>
+                    <div class="info-value">{{ status.completed_at[:19] if status.completed_at else 'N/A' }}</div>
+                </div>
+                {% if status.user_input %}
+                <div class="info-item">
+                    <div class="info-label">Dwelling Type</div>
+                    <div class="info-value">{{ status.user_input.dwelling_type.title() }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="background: #d1e7dd; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <p><strong>✅ Research Complete!</strong></p>
+                <p style="margin: 10px 0 0 0;">
+                    Your comprehensive property research report is ready to view.
+                </p>
+            </div>
+
+            <div class="action-buttons">
+                <a href="/view/{{ status.run_id }}/index.html" class="btn-view-report">
+                    📊 View Report
+                </a>
+                <a href="/export/{{ status.run_id }}/pdf" class="btn-export" title="Download PDF Report">
+                    📄 PDF Export
+                </a>
+                <a href="/export/{{ status.run_id }}/xlsx" class="btn-export" title="Download Excel Data">
+                    📊 Excel Export
+                </a>
+                <a href="/" class="btn-new-research">
+                    🔬 New Research
+                </a>
+                <a href="/runs" class="btn" style="padding: 12px 30px;">
+                    📁 All Reports
+                </a>
+            </div>
+
+            {% elif status.status == 'failed' %}
+            <div class="error-message">
+                <strong>Error:</strong> {{ status.error_message or 'Unknown error occurred' }}
+            </div>
+
+            <div class="action-buttons">
+                <a href="/" class="btn-new-research">
+                    🔄 Try Again
+                </a>
+                <a href="/runs" class="btn" style="padding: 12px 30px;">
+                    📁 All Reports
+                </a>
+            </div>
+
+            {% else %}
+            <p>Status: {{ status.status }}</p>
+
+            <div class="action-buttons">
+                <a href="/" class="btn-new-research">
+                    🏠 Home
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if status.status in ['starting', 'running'] %}
+    <script>
+        // SSE-based real-time progress streaming
+        const runId = '{{ status.run_id }}';
+        let eventSource = null;
+
+        function updateProgressBar(percent) {
+            const fill = document.getElementById('progress-bar-fill');
+            const text = document.getElementById('progress-bar-text');
+            if (fill && text) {
+                fill.style.width = percent + '%';
+                text.textContent = Math.round(percent) + '%';
+
+                // Change color to blue at 100%
+                if (percent >= 100) {
+                    fill.style.background = 'linear-gradient(90deg, #007bff, #0056b3)';
+                }
+            }
+        }
+
+        function addProgressMessage(message, timestamp) {
+            const stepsList = document.getElementById('steps-list');
+            if (stepsList) {
+                const time = timestamp ? timestamp.substring(11, 19) : '';
+                const messageDiv = document.createElement('div');
+                messageDiv.style.cssText = 'padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.9em;';
+                messageDiv.innerHTML =
+                    '<span style="color: #28a745; margin-right: 8px;">&#10003;</span>' +
+                    '<span>' + message + '</span>' +
+                    '<span style="color: #999; font-size: 0.8em; float: right;">' + time + '</span>';
+
+                // Remove "waiting" placeholder if present
+                if (stepsList.textContent.includes('Waiting for pipeline')) {
+                    stepsList.innerHTML = '';
+                }
+
+                stepsList.appendChild(messageDiv);
+                stepsList.scrollTop = stepsList.scrollHeight;
+            }
+        }
+
+        function connectSSE() {
+            eventSource = new EventSource('/api/progress/' + runId + '/stream');
+
+            eventSource.addEventListener('progress', function(e) {
+                const data = JSON.parse(e.data);
+                updateProgressBar(data.percent);
+                addProgressMessage(data.message, data.timestamp);
+            });
+
+            eventSource.addEventListener('complete', function(e) {
+                eventSource.close();
+                // Redirect to results or reload to show final state
+                setTimeout(() => window.location.reload(), 1000);
+            });
+
+            eventSource.addEventListener('error', function(e) {
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    // Server closed connection, try reconnect after delay
+                    console.log('SSE connection closed, will retry in 5s');
+                    setTimeout(connectSSE, 5000);
+                }
+                // EventSource auto-reconnects on network errors
+            });
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+
+        // Start SSE connection
+        connectSSE();
+    </script>
+    {% endif %}
+</body>
+</html>
