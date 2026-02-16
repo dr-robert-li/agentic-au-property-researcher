@@ -1,12 +1,13 @@
 # Agentic Australian Property Researcher 🏘️
 
-[![Version](https://img.shields.io/badge/version-1.7.1-blue.svg)](https://github.com/yourusername/agentic-re-researcher)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/dr-robert-li/agentic-au-property-researcher)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-83%20passing-brightgreen.svg)]()
 
 **Author:** Dr. Robert Li
 
-**Version:** 1.7.1
+**Version:** 2.0.0
 
 ---
 
@@ -38,6 +39,7 @@ AI-powered property investment researcher that generates comprehensive suburb-le
 
 ## Features
 
+### Research & Analysis
 - **Australia-Wide Coverage**: Research suburbs across all Australian states and territories
 - **Multi-Region Filtering**: Target specific regions (e.g., South East Queensland, Northern NSW) or entire states
 - **Dual AI Provider Support**: Toggle between Perplexity (deep research + live web search) and Anthropic Claude (claude-sonnet-4-5)
@@ -50,49 +52,61 @@ AI-powered property investment researcher that generates comprehensive suburb-le
   - Schools, crime statistics, shopping access
   - Property configurations (land size, bedrooms, bathrooms)
 - **Growth Projections**: 1, 2, 3, 5, 10, and 25-year price growth forecasts with confidence intervals
-- **Intelligent Ranking**: Ranks suburbs by composite score (growth potential adjusted for risk)
+- **Intelligent Ranking**: Quality-adjusted composite scoring that penalizes low-confidence data
+- **Data Quality Tracking**: Each suburb tagged with quality level (high/medium/low/fallback) with per-field indicators and visible warnings in reports
+
+### Reporting & Export
 - **Professional Reports**:
   - Interactive HTML reports with responsive design
+  - Data quality warning banners for low-confidence suburbs
   - Comparison charts and visualizations (matplotlib/seaborn)
-  - Overview dashboard with rankings
+  - Overview dashboard with rankings and quality indicators
   - Detailed suburb-level reports
 - **Export Options**:
   - PDF export with styled layout, rankings table, per-suburb sections, and embedded charts
-  - Excel export with 7 structured sheets (overview, market metrics, growth projections, property config, demographics, infrastructure, price history)
+  - Excel export with expanded sheets including individual demographic and infrastructure columns
   - On-demand export from web UI, interactive CLI, or CLI flags
   - Cached exports for instant re-download
-- **Historical Data Caching**:
-  - File-based JSON cache reduces redundant API calls and speeds up repeated research
-  - Discovery cache (24-hour TTL) keyed by price bucket, dwelling type, and regions
-  - Per-suburb research cache (7-day TTL) keyed by suburb, state, and dwelling type
-  - Price bucketing (nearest $50k) for better cache hit rates
-  - Cache statistics, clear controls via web UI, CLI, and API endpoints
-  - Configurable via environment variables (`CACHE_ENABLED`, `CACHE_DISCOVERY_TTL`, `CACHE_RESEARCH_TTL`)
+
+### Caching & Recovery
+- **Crash-Proof Cache**:
+  - Atomic writes (tempfile + fsync + rename) prevent corruption on kill -9
+  - Automatic index backup/restore with corruption detection
+  - Orphan file cleanup on startup
+  - LRU eviction with configurable size limit (default 500MB)
+  - API response validation before cache entry prevents cache poisoning
+- **Checkpoint-Based Recovery**:
+  - `--resume RUN_ID` flag continues interrupted research runs from last checkpoint
+  - Discovery and research checkpoints with SHA-256 integrity validation
+  - Automatic fallback to previous valid checkpoint on corruption
 - **Run Comparison Mode**:
   - Compare 2-3 past research runs side-by-side
-  - Identifies overlapping suburbs across runs with metric deltas (price, score, growth)
-  - Lists unique suburbs per run
-  - Run configuration comparison table
-  - Available from web UI (runs list + dedicated comparison page) and CLI (`--compare` flag)
+  - Identifies overlapping suburbs across runs with metric deltas
   - Generates standalone comparison HTML reports
+
+### Performance & Scalability
 - **Parallel Execution Pipeline**:
-  - Multi-region discovery runs concurrently (configurable workers, default 4)
-  - Per-suburb research runs in parallel (configurable workers, default 3)
-  - "All Australia" queries automatically split into 8 per-state parallel calls
-  - Results deduplicated and merged across regions; partial failures preserve successful results
-  - Thread-safe cache prevents index corruption under concurrent access
-- **Pipeline Resilience**:
-  - Transient API errors (timeouts, server errors) skip the suburb and continue with remaining suburbs using fallback metrics
-  - Only account-level errors (auth failures, rate limits) stop the batch
-  - Increased discovery multiplier (5x) and research multiplier (3x) to ensure enough candidates survive filtering
-- **Progress Visibility**:
-  - Web UI displays real-time step-by-step progress during research runs
-  - Progress steps include suburb discovery, per-suburb research status, ranking, and report generation
-  - Steps auto-update via polling with timestamps
+  - Multi-region discovery runs concurrently with adaptive worker scaling
+  - Per-suburb research runs in parallel with memory-aware limits
+  - Container-aware CPU detection (cgroup v2/v1) prevents resource exhaustion in Docker/Kubernetes
+  - Optimized pipeline multipliers (2.0x/1.5x) reduce wasteful API over-sampling by 60-80%
+- **Real-Time Progress**:
+  - SSE (Server-Sent Events) streaming with percentage tracking and instant push updates
+  - Browser auto-reconnect on disconnect
+  - Progress breakdown: discovery (0-20%), research (20-80%), ranking (80-85%), reporting (85-100%)
+
+### Security & Reliability
+- **API Key Protection**: Global log sanitization redacts credentials from all logs, error messages, and HTTP responses
+- **Input Validation**: Run IDs, regions, and cache paths validated at boundaries to prevent injection and path traversal
+- **Typed Exception Hierarchy**: Type-based error dispatch (retry vs fail vs stop) replaces fragile string matching
+- **Thread-Safe Concurrency**: Double-checked locking for cache singleton, lock-protected server state, queue-based progress reporting
+- **Response Validation**: Pydantic schemas validate all API responses with flexible coercion before caching
+
+### Interfaces
 - **Triple Interface**: Three ways to use the application
   - Basic command-line interface (argparse)
   - Interactive CLI with autocomplete and validation (prompt_toolkit + rich)
-  - Web interface with real-time status updates (FastAPI)
+  - Web interface with real-time SSE progress (FastAPI)
 
 ## Installation
 
@@ -213,6 +227,7 @@ python -m src.app \
 - `--export-pdf`: Automatically generate PDF report after completion
 - `--export-xlsx`: Automatically generate Excel report after completion
 - `--clear-cache`: Clear the research cache and display statistics, then exit
+- `--resume RUN_ID`: Resume an interrupted research run from the last checkpoint
 - `--compare RUN_ID [RUN_ID ...]`: Compare 2-3 past runs side-by-side and generate a comparison report
 
 #### Examples
@@ -396,10 +411,15 @@ CACHE_DISCOVERY_TTL=86400       # Discovery cache TTL in seconds (default: 24 ho
 CACHE_RESEARCH_TTL=604800       # Research cache TTL in seconds (default: 7 days)
 
 # Parallel Execution Settings
-DISCOVERY_MAX_WORKERS=4         # Max parallel region discovery workers (default: 4)
-RESEARCH_MAX_WORKERS=3          # Max parallel suburb research workers (default: 3)
+DISCOVERY_MAX_WORKERS=4         # Max parallel region discovery workers (default: auto-scaled)
+RESEARCH_MAX_WORKERS=3          # Max parallel suburb research workers (default: auto-scaled)
 DISCOVERY_TIMEOUT=120           # Timeout per region discovery call in seconds (default: 120)
 RESEARCH_TIMEOUT=240            # Timeout per suburb research call in seconds (default: 240)
+DISCOVERY_MULTIPLIER=2.0        # Discovery over-sampling multiplier (default: 2.0)
+RESEARCH_MULTIPLIER=1.5         # Research over-sampling multiplier (default: 1.5)
+
+# Cache Size Settings
+CACHE_MAX_SIZE_MB=500           # Maximum cache directory size in MB (default: 500)
 ```
 
 At least one API key is required. If both are provided, the provider toggle becomes available in all interfaces.
@@ -426,10 +446,11 @@ Edit `src/config/settings.py` for advanced settings:
 
 ```
 src/
-├── config/              # Settings and region definitions
+├── config/              # Settings, region definitions, CPU detection, worker scaling
 ├── models/              # Pydantic data models
-├── research/            # AI provider integration and analysis
-├── reporting/           # Chart generation and HTML rendering
+├── research/            # AI provider integration, analysis, caching, checkpoints
+├── reporting/           # Chart generation, HTML rendering, PDF/Excel export
+├── security/            # Sanitization, input validation, exception hierarchy
 └── ui/                  # User interfaces (web + CLI)
     ├── web/
     │   ├── templates/   # Jinja2 HTML templates
@@ -441,17 +462,22 @@ src/
 
 1. **Perplexity Client** (`research/perplexity_client.py`): Perplexity API wrapper with retry logic and client factory
 2. **Anthropic Client** (`research/anthropic_client.py`): Anthropic Claude API wrapper with matching interface
-3. **Suburb Discovery** (`research/suburb_discovery.py`): Finds qualifying suburbs via selected provider
-4. **Suburb Research** (`research/suburb_research.py`): Deep research per suburb with provider routing
-5. **Ranking Engine** (`research/ranking.py`): Scores and ranks suburbs
-6. **Chart Generator** (`reporting/charts.py`): Creates visualizations
-7. **HTML Renderer** (`reporting/html_renderer.py`): Generates reports
-8. **PDF Exporter** (`reporting/pdf_exporter.py`): Generates styled PDF reports via fpdf2
-9. **Excel Exporter** (`reporting/excel_exporter.py`): Generates multi-sheet Excel workbooks via openpyxl
-10. **Export Orchestrator** (`reporting/exports.py`): Coordinates export generation and metadata reconstruction
-11. **Research Cache** (`research/cache.py`): File-based JSON cache with TTL for discovery and per-suburb results
-12. **Run Comparison** (`research/comparison.py`): Side-by-side comparison of 2-3 past runs with overlap detection
-13. **Comparison Renderer** (`reporting/comparison_renderer.py`): Generates comparison HTML reports
+3. **Suburb Discovery** (`research/suburb_discovery.py`): Finds qualifying suburbs via selected provider with parallel multi-region support
+4. **Suburb Research** (`research/suburb_research.py`): Deep research per suburb with provider routing and response validation
+5. **Ranking Engine** (`research/ranking.py`): Quality-adjusted scoring and ranking with configurable weights
+6. **Response Validation** (`research/validation.py`): Pydantic schemas for API response coercion and structured warnings
+7. **Research Cache** (`research/cache.py`): Thread-safe file-based cache with atomic writes, backup/restore, and LRU eviction
+8. **Checkpoint Manager** (`research/checkpoints.py`): SHA-256 validated checkpoints for crash recovery and `--resume` support
+9. **Chart Generator** (`reporting/charts.py`): Creates visualizations
+10. **HTML Renderer** (`reporting/html_renderer.py`): Generates reports with data quality indicators
+11. **PDF Exporter** (`reporting/pdf_exporter.py`): Generates styled PDF reports via fpdf2
+12. **Excel Exporter** (`reporting/excel_exporter.py`): Multi-sheet workbooks with expanded demographic/infrastructure columns
+13. **Export Orchestrator** (`reporting/exports.py`): Coordinates export generation and metadata reconstruction
+14. **Security Layer** (`security/`): Log sanitization, input validators, typed exception hierarchy
+15. **CPU Detection** (`config/cpu_detection.py`): Container-aware CPU detection (cgroup v2/v1)
+16. **Worker Scaling** (`config/worker_scaling.py`): Adaptive worker calculation with memory awareness
+17. **Run Comparison** (`research/comparison.py`): Side-by-side comparison of 2-3 past runs with overlap detection
+18. **Comparison Renderer** (`reporting/comparison_renderer.py`): Generates comparison HTML reports
 
 ## Data Models
 
@@ -473,16 +499,25 @@ See `src/models/suburb_metrics.py` for complete schema.
 # Activate virtual environment
 source venv/bin/activate
 
-# Run all test suites (183+ tests)
-python tests/test_cache.py && python tests/test_comparison.py && python tests/test_pipeline.py && python tests/test_cache_resilience.py
+# Install dev dependencies
+pip install -r requirements-dev.txt
 
-# Run specific test suite
-python tests/test_pipeline.py          # Pipeline resilience & progress (22 tests)
+# Run full test suite (83 hardening tests)
+python -m pytest tests/ -v
+
+# Run by category
+python -m pytest tests/ -m unit -q          # 63 unit tests (cache, exceptions, validation, worker scaling)
+python -m pytest tests/ -m integration -q   # 7 integration tests (pipeline end-to-end)
+python -m pytest tests/ -m asyncio -q       # 6 async tests (SSE endpoints)
+python -m pytest tests/ -m concurrent -q    # 7 concurrent tests (thread safety)
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=term-missing -q
+
+# Run legacy test suites
 python tests/test_cache.py             # Research cache (41 tests)
 python tests/test_comparison.py        # Run comparison (25 tests)
-python tests/test_cache_resilience.py  # Cache resilience & UI (18 tests)
-python tests/test_models.py            # Config & data models
-python tests/test_research_ranking.py  # Ranking logic
+python tests/test_pipeline.py          # Pipeline resilience & progress (22 tests)
 python tests/test_exports.py           # PDF & Excel exports (77 tests)
 ```
 
@@ -538,6 +573,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## Roadmap
 
+### Completed (v2.0)
 - [x] FastAPI web interface
 - [x] Interactive CLI with prompt_toolkit
 - [x] Dual AI provider support (Perplexity + Anthropic Claude)
@@ -545,13 +581,21 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 - [x] Historical data caching
 - [x] Comparison mode for multiple runs
 - [x] Pipeline resilience (graceful error handling)
-- [x] Real-time progress visibility in web UI
+- [x] Real-time SSE progress streaming
+- [x] Security hardening (log sanitization, input validation, exception hierarchy)
+- [x] Thread-safe concurrency (cache singleton, server state, queue-based progress)
+- [x] API response validation with flexible coercion
+- [x] Crash-proof atomic cache writes with backup/restore
+- [x] Checkpoint-based crash recovery with `--resume`
+- [x] Container-aware adaptive worker scaling
+- [x] Data quality tracking and quality-adjusted ranking
+- [x] Comprehensive test suite (83 tests: unit, integration, async, concurrent)
 
 ## Acknowledgments
 
 - **Perplexity AI**: Deep research API with live web search capabilities
 - **Anthropic**: Claude Sonnet 4.5 for advanced reasoning (now a direct provider option)
-- **Libraries**: Pydantic, Jinja2, Matplotlib, Seaborn, FastAPI, prompt_toolkit, rich, fpdf2, openpyxl
+- **Libraries**: Pydantic, Jinja2, Matplotlib, Seaborn, FastAPI, sse-starlette, prompt_toolkit, rich, fpdf2, openpyxl, psutil, pytest
 
 ## Disclaimer
 

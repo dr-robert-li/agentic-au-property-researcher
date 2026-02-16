@@ -44,7 +44,7 @@ API_GENERAL_ERRORS = TRANSIENT_ERRORS
 app = FastAPI(
     title="Australian Property Research",
     description="AI-powered property investment research for Australian real estate",
-    version="1.4.0"
+    version="2.0.0"
 )
 
 

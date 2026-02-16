@@ -10,6 +10,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - No additional features planned at this time
 
+## [2.0.0] - 2026-02-16
+
+### Overview
+
+Major release that hardens the application into a production-ready system across 5 phases: security foundations, thread safety, cache hardening with crash recovery, real-time progress with adaptive performance, and comprehensive testing. 83 new automated tests validate all hardening work.
+
+### Added
+
+#### Security & Error Handling (Phase 1)
+- **Global Log Sanitization**: `SensitiveDataFilter` intercepts all logs (including third-party libraries) and redacts API keys, credentials, and common key patterns (`pplx-*`, `sk-ant-*`, `sk-*`)
+- **Input Validation**: Pydantic field validators for run IDs (alphanumeric + hyphen/underscore, 1-100 chars), regions (whitelist with case-insensitive normalization), and cache paths (path traversal prevention)
+- **Startup Environment Validation**: API key format validation (`pplx-` keys >=45 chars, `sk-ant-` keys >=50 chars) with clear error messages on misconfiguration
+- **Error Response Sanitization**: All HTTP error responses scrubbed of credentials before sending
+- **Typed Exception Hierarchy**: `ApplicationError` base with `PermanentError`/`TransientError` intermediaries and specific types (`RateLimitError`, `TimeoutError`, `AuthenticationError`, `ValidationError`, `NetworkError`, `APIError`, `CacheError`, `ConfigurationError`, `ResearchError`)
+- **Provider-Specific Exceptions**: `PerplexityRateLimitError`, `AnthropicAuthError`, etc. inheriting from base hierarchy
+- **Security Module**: New `src/security/` package with `sanitization.py`, `validators.py`, `exceptions.py`
+
+#### Thread Safety & Response Validation (Phase 2)
+- **Double-Checked Locking**: Cache singleton uses double-checked locking pattern to prevent duplicate initialization from concurrent threads
+- **Lock-Protected Server State**: `active_runs` and `completed_runs` dicts protected with separate `threading.Lock` instances
+- **Queue-Based Progress Reporting**: `queue.Queue(maxsize=100)` replaces direct dict mutation for cross-thread progress communication
+- **Progress API Endpoint**: `GET /api/progress/{run_id}` for structured progress polling
+- **Response Validation Schemas**: Pydantic v2 models (`DiscoverySuburbResponse`, `ResearchSuburbResponse`) with `BeforeValidator` decorators for flexible coercion
+- **`coerce_numeric` Helper**: Converts string numbers from LLM APIs (e.g., `"450000"` -> `450000`)
+- **Structured Validation Warnings**: `ValidationResult` dataclass with field-level warnings for quality tracking
+- **Cache Poisoning Prevention**: Validation wired at cache read/write boundaries; invalid entries auto-invalidated and re-fetched
+- **Validation Module**: New `src/research/validation.py`
+
+#### Cache Hardening & Crash Recovery (Phase 3)
+- **Atomic Cache Writes**: `tempfile.NamedTemporaryFile` + `os.fsync` + `os.replace` (POSIX-atomic) -- kill -9 safe
+- **Index Backup/Restore**: Automatic backup after every successful write; corruption detection triggers fallback to backup with logged recovery
+- **Orphan Cleanup**: Removes cache files not in index and stray `.tmp_*` files during startup
+- **LRU Eviction**: `last_accessed` timestamp tracking with configurable max size (default 500MB, via `CACHE_MAX_SIZE_MB`)
+- **Directory Fsync**: POSIX metadata durability for cache directory
+- **Checkpoint Manager**: `CheckpointManager` class with SHA-256 validated checkpoints and automatic rollback on corruption
+- **Discovery Checkpoints**: Saved after `parallel_discover_suburbs()` completes
+- **Research Checkpoints**: Saved every 5 suburbs with last-3 retention and automatic cleanup
+- **`--resume RUN_ID` CLI Flag**: Resumes interrupted research runs, skipping already-completed suburbs
+- **Checkpoint Module**: New `src/research/checkpoints.py`
+
+#### Progress, Performance & Data Quality (Phase 4)
+- **SSE Progress Streaming**: `EventSourceResponse` at `/api/progress/{run_id}/stream` via sse-starlette with connection tracking and cleanup
+- **Percentage-Based Progress**: Discovery (0-20%), research (20-80%), ranking (80-85%), reporting (85-100%)
+- **Browser Auto-Reconnect**: EventSource client with 5-second reconnection on disconnect
+- **Container-Aware CPU Detection**: Reads cgroup v2 (`/sys/fs/cgroup/cpu.max`) and cgroup v1 (`/sys/fs/cgroup/cpu/cpu.cfs_quota_us`) before `os.cpu_count()` fallback
+- **Memory-Aware Worker Scaling**: Reserves 2GB system memory, assumes 500MB per worker, via psutil
+- **CPU Detection Module**: New `src/config/cpu_detection.py`
+- **Worker Scaling Module**: New `src/config/worker_scaling.py`
+- **Data Quality Tracking**: `data_quality` field in `SuburbMetrics` (high/medium/low/fallback) with `data_quality_details` dict
+- **Quality-Adjusted Ranking**: `calculate_quality_adjusted_score()` with configurable multipliers (high=1.0, medium=0.95, low=0.85, fallback=0.70); set as default ranking method
+- **HTML Quality Warnings**: Yellow warning banners for low/fallback quality suburbs with collapsible field-level details
+- **Expanded Excel Exports**: Demographics sheet with individual household type and income columns; Infrastructure sheet with individual transport, amenity, and crime columns
+
+#### Comprehensive Testing (Phase 5)
+- **pytest Infrastructure**: `pyproject.toml` config with 5 markers (unit, integration, asyncio, concurrent, slow), `asyncio_mode=auto`, strict markers, `pythonpath=["src"]`
+- **Dev Dependencies**: `requirements-dev.txt` with pytest, pytest-asyncio, pytest-mock, pytest-cov, pytest-timeout, freezegun, httpx
+- **Shared Fixtures**: `tests/conftest.py` with `temp_cache_dir`, `cache_config`, `research_cache`, `reset_cache_singleton`, `mock_env_vars`
+- **Test Data Factories**: `make_discovery_suburb()`, `make_research_response()`, `make_suburb_metrics()` in `tests/fixtures/sample_data.py`
+- **Mock Responses**: `VALID_DISCOVERY_RESPONSE`, `MALFORMED_DISCOVERY_RESPONSE`, `VALID_RESEARCH_RESPONSE`, `PARTIAL_RESEARCH_RESPONSE`, `INVALID_RESEARCH_RESPONSE` in `tests/fixtures/mock_responses.py`
+- **Unit Tests (63)**: Cache CRUD/expiry/recovery/LRU (16), exception hierarchy/isinstance routing (18), validation coercion/rejection (21), worker scaling/CPU detection (8)
+- **Integration Tests (7)**: Discovery-to-ranking pipeline with mocked API, quality-adjusted ranking, filter criteria, validation wiring
+- **Async Tests (6)**: SSE health endpoint, stream delivery with completion sentinel, connection cleanup, status API, cache stats
+- **Concurrent Tests (7)**: 10-thread cache writes with Barrier synchronization, reads-during-writes isolation, invalidation safety, server state contention, queue safety, deepcopy isolation, singleton thread safety
+
+### Changed
+- `progress_callback` signature updated to `Callable[[str, float], None]` (added percentage parameter)
+- Discovery multiplier reduced from 5x to 2.0x (60% fewer discovery API calls)
+- Research multiplier reduced from 3x to 1.5x (50% fewer research API calls)
+- Default ranking method changed from `growth_score` to `quality_adjusted`
+- Perplexity client uses `status_code` checks instead of string matching for error detection
+- Anthropic client uses `isinstance` checks against SDK exception types
+- All exception handlers migrated from string matching to `isinstance`-based dispatch
+- `CacheEntry` model enhanced with `size_bytes` and `last_accessed` fields
+- Fallback metrics auto-tagged as `data_quality="fallback"`
+- FastAPI app version bumped to 2.0.0
+
+### Dependencies
+- Added `sse-starlette` (SSE streaming)
+- Added `psutil` (memory-aware worker scaling)
+- Added `pytest`, `pytest-asyncio`, `pytest-mock`, `pytest-cov`, `pytest-timeout`, `freezegun`, `httpx` (dev dependencies)
+
 ## [1.7.1] - 2026-02-14
 
 ### Fixed
@@ -356,6 +437,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v2.0.0** (2026-02-16): Production hardening -- security, thread safety, crash recovery, SSE progress, adaptive scaling, data quality, 83 tests
+- **v1.7.1** (2026-02-14): PDF Unicode crash fix
 - **v1.7.0** (2026-02-13): Parallel discovery + parallel research pipeline
 - **v1.6.0** (2026-02-13): Cache resilience + home page cache management
 - **v1.5.0** (2026-02-13): Test organization, API response resilience, CSS fix
