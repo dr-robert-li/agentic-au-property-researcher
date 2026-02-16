@@ -94,11 +94,11 @@ Plans:
   3. API validation tests pass malformed, partial, and type-mismatched responses through the validators and confirm correct coercion or rejection
   4. End-to-end pipeline test runs discovery through research with mocked API responses and produces valid report output
   5. SSE endpoint tests verify event streaming, client disconnect cleanup, and reconnection using pytest-asyncio
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 05-01: Unit tests (cache, exceptions, validation, adaptive workers)
-- [ ] 05-02: Integration and async tests (pipeline, SSE, thread safety under load)
+- [ ] 05-01-PLAN.md -- Pytest infrastructure setup, shared fixtures, and unit tests for cache, exceptions, validation, and worker scaling
+- [ ] 05-02-PLAN.md -- Integration pipeline test, async SSE endpoint tests, and concurrent thread safety tests
 
 ## Progress
 
